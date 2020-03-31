@@ -59,18 +59,19 @@ def loadModel(config, nIn=None, nOut=None, tarfile=None):
     model.device = device
     return model
 
-def chooseThreshold(metrics_dict, thresholds, metric='balanced_accuracy', score='metric', criteria='max', beta=2, index=False):
+def chooseThreshold(metrics_dict, thresholds, metric='balanced_accuracy', score='metric_value', criteria='max', beta=2, index=False):
     """ Choose a threshold value which meets the following criteria:
         metrics_dict (dict): a dictionary of metrics where each entry is a numpy array of values
-                             corresonding to thresholds
+                             corresonding to different thresholds.
         score (string): determine what we are going to evaluate
-            metric - the metric its self
+            metric_value - the metric its self
             F-beta - the F-beta score of the metric and threshold with beta weighting the metric.
                      This is useful if we want to choose higher or lower thresholds while still 
                      preferring a good metric score.
         criteria (string):
             min - minimizes the score
             max - maximizes the score
+        beta (float): the beta value to use when score=F-beta
     """
     # choose what we are actually evaluating
     values = metrics_dict[metric]
@@ -95,6 +96,11 @@ def chooseThreshold(metrics_dict, thresholds, metric='balanced_accuracy', score=
         return thresholds[idx]
 
 def getMetrics(y_gt, prob, threshold=None, n_samples=25, choose_threshold=False, **kwargs):
+    if(isinstance(y_gt, list)):
+        y_gt = np.array(y_gt)
+    if(isinstance(prob, list)):
+        prob = np.array(prob)
+    
     if(threshold is None):
         # sample n_samples threshold values
         threshold = np.linspace(0, 1, n_samples+2)[1:-1] # skip 0 and 1 values
@@ -110,7 +116,7 @@ def getMetrics(y_gt, prob, threshold=None, n_samples=25, choose_threshold=False,
     f1s = np.empty(n_samples, dtype=np.float32)
     iou = np.empty(n_samples, dtype=np.float32)
     for i in range(len(threshold)):
-        y_pr = (prob[:, 1] >= threshold[i]).long()
+        y_pr = (prob[:, 1] >= threshold[i])#.long()
         
         # balanced accuracy
         acc[i] = balanced_accuracy_score(y_gt, y_pr)
