@@ -1,0 +1,21 @@
+{
+    "regexes": [
+        {
+            "re": "DA|DC|DG|DT",
+            "group": "standard DNA",
+            "atom_regexes": [
+                {
+                    "re": ".*",
+                    "class": 1
+                }
+            ]
+        }
+    ],
+    "nc": 2,
+    "default": 0,
+    "classes": {
+        "0": "default",
+        "1": "DNA"
+    },
+    "name": "BINARY_STANDARD_DNA"
+}

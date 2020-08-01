@@ -1,5 +1,5 @@
-from .conv_edge_pool import Net_Conv_EdgePool
+from .conv_edge_pool import NetConvEdgePool
 
 __all__ = [
-    "Net_Conv_EdgePool"
+    "NetConvEdgePool"
 ]

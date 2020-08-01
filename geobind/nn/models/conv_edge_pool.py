@@ -7,13 +7,10 @@ from torch_geometric.transforms import PointPairFeatures, GenerateMeshNormals
 from torch_geometric.data import Data
 
 # geobind packages
-from geobind.nn.utils import computePPEdgeFeatures
+#from geobind.nn.utils import computePPEdgeFeatures
 from geobind.nn.layers import EdgePooling_EF
-#import numpy as np
-#import trimesh
-#from trimesh.smoothing import filter_laplacian
 
-class Net_Conv_EdgePool(torch.nn.Module):
+class NetConvEdgePool(torch.nn.Module):
     def __init__(self, nIn, nOut,
             conv_args=None,
             pool_args=None,
@@ -21,14 +18,15 @@ class Net_Conv_EdgePool(torch.nn.Module):
             depth=2,
             num_top_convs=0,
             num_bottom_convs=1,
-            act = 'relu',
+            act='relu',
             use_skips=True,
             sum_skips=False,
             dropout=0.5,
             edge_dim=4,
-            smoothing=None
+            smoothing=None,
+            name='net_conv_edge_pool'
         ):
-        super(Net_Conv_EdgePool, self).__init__()
+        super(NetConvEdgePool, self).__init__()
         
         self.in_channels = nIn
         self.out_channels = nOut
@@ -41,6 +39,7 @@ class Net_Conv_EdgePool(torch.nn.Module):
         self.num_bottom_convs = num_bottom_convs
         self.edge_dim = edge_dim
         self.smoothing = smoothing
+        self.name = name
         if(act == 'relu'):
             self.act = F.relu
         elif(act == 'elu'):
@@ -90,7 +89,7 @@ class Net_Conv_EdgePool(torch.nn.Module):
         self.bottom_convs = torch.nn.ModuleList()
         self.up_convs = torch.nn.ModuleList()
         
-        # down FC layers
+        # down FC layers (dimentionality reduction)
         self.lin1 = nn.Linear(nIn, nhidden)
         
         # top convolutions
@@ -203,7 +202,7 @@ class Net_Conv_EdgePool(torch.nn.Module):
         if(self.conv_type == "CG"):
             return (x, data.edge_index, data.edge_attr)
     
-    def pooledMesh(self, data, unpool_info, new_x, new_edge_index, new_batch):
+    def getpooledMesh(self, data, unpool_info, new_x, new_edge_index, new_batch):
         if(self.update_mesh):
             # update the node positions and faces
             ind1 = torch.empty_like(new_batch, device=torch.device('cpu'))
@@ -261,7 +260,7 @@ class Net_Conv_EdgePool(torch.nn.Module):
             #x, edge_index, batch, unpool = self.down_pools[i](x, graph_activations[i].edge_index, graph_activations[i].batch)
             args = self.getPoolArgs(x, graph_activations[i])
             x, edge_index, batch, unpool = self.down_pools[i](*args)
-            data_pooled = self.pooledMesh(graph_activations[i], unpool, x, edge_index, batch)
+            data_pooled = self.getpooledMesh(graph_activations[i], unpool, x, edge_index, batch)
             #if(debug):
                 #np.save("pooling/pos{}.npy".format(i), data_pooled.pos)
                 #np.save("pooling/face{}.npy".format(i), data_pooled.face)

@@ -1,90 +1,131 @@
-import os
-import argparse
-import sys
-import subprocess
-import numpy as np
-from geobind import writeOFF, readOFF
+#!/usr/bin/env python
 
+# command line args
+import argparse
 PARSER = argparse.ArgumentParser()
-PARSER.add_argument("mesh_file")
-PARSER.add_argument("feature_file")
-PARSER.add_argument("compare_file", nargs='?')
-PARSER.add_argument("-l", dest='labels', action="store_true", default=False)
+PARSER.add_argument("data_file")
+PARSER.add_argument("extras_file", nargs='?')
+PARSER.add_argument("--color_map", dest='color_map', default='seismic',
+        help="Name of a matplotlib color map.")
 ARGS = PARSER.parse_args()
 
-class colorMapper(object):
-    def __init__(self, colors):
-        self.colors = colors
-    def __call__(self, value):
-        return self.colors[value]
+# builtin modules
+import os
 
-#meshFile = os.path.join(ARGS.mesh_dir, ARGS.prefix+"_mesh.off")
-#if(ARGS.prediction_dir):
-    #predFile =  os.path.join(ARGS.prediction_dir, ARGS.prefix+"_vertex_labels_p.npy")
-    #ARGS.labels = True
-    #P = np.load(predFile)
+# third party modules
+import numpy as np
+import trimesh
 
-#if(ARGS.labels):
-    #dataFile = os.path.join(ARGS.feature_dir, ARGS.prefix+"_vertex_labels.npy")
-    #if(not os.path.exists(dataFile)):
-        #dataFile = os.path.join(ARGS.feature_dir, ARGS.prefix+"_vertex_labels_p.npy")
-#else:
-    #dataFile = os.path.join(ARGS.feature_dir, ARGS.prefix+"_vertex_features.npy")
+# geobind modules
+def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', max_width=4, shift_axis='x', **kwargs):
+    # figure out where to get color information
+    if(data is None and colors is None):
+        # just visualize the mesh geometry
+        return mesh.show(**kwargs)
+    elif(colors is None):
+        # compute colors from the data array
+        vertex_colors = []
+        for i in range(data.shape[1]):
+            vertex_colors.append(trimesh.visual.interpolate(data[:,i], color_map=color_map))
+    else:
+        # use the given colors
+        if(isinstance(colors, list)):
+            vertex_colors = colors
+        else:
+            vertex_colors = [colors]
+    scene = [] # hold a list of meshes that determine the scene
+    
+    # determine how to arrange multiple copies of the mesh
+    si = ['x', 'y', 'z'].index(shift_axis)
+    offset = 0.0 # cumulative distance we translate new meshes
+    shift = np.array([0.0, 0.0, 0.0]) # direction to translate meshes
+    shift[si] = 1.0
+    
+    # loop over each mesh copy
+    for i in range(len(vertex_colors)):
+        # add meshes to scene list
+        m = mesh.copy()
+        m.apply_translation(offset*shift)
+        m.visual.vertex_colors = vertex_colors[i] 
+        offset += m.bounding_box.extents[si]
+        scene.append(m)
+    return trimesh.Scene(scene).show(**kwargs)
 
+# Read in data files
+data = np.load(ARGS.data_file)
+mesh = trimesh.Trimesh(vertices=data['V'], faces=data['F'], process=False)
 
-V, F = readOFF(ARGS.mesh_file)
-D = np.load(ARGS.feature_file)
-
+# loop input parser
 parser = argparse.ArgumentParser()
+parser.add_argument("--quit", action='store_true', help="exit program")
+parser.add_argument("--list", action='store_true', help="list features available in data file")
 parser.add_argument("-u", type=float, default=None)
 parser.add_argument("-l", type=float, default=None)
 parser.add_argument("x", type=int, nargs='+')
 
-if(not ARGS.labels):
-    size = D.shape[1]
-    while True:
-        inp = raw_input("Enter an integer index [{}, {}] into the data to visualize (q to exit): ".format(0, size-1)).strip()
-        
-        # check if we are quitting
-        if(inp == 'q'):
-            break
-        else:
-            args = parser.parse_args(inp.split())
-        
+# list of features in data file
+if "feature_names" in data:
+    feature_list = ""
+    for i, feature in enumerate(data['feature_names']):
+        feature_list += "{:2d}: {}\n".format(i, feature)
+    feauture_list = feature_list.strip()
+else:
+    feature_list = "no feature data found!"
+
+# feature array
+if("X" in data):
+    size = data["X"].shape[1]
+else:
+    size = -1
+
+# binary label colors
+colors = np.array([
+    [1.00, 1.00, 1.00], # -1: masked
+    [0.55, 0.70, 0.40], #  0: non-binding site
+    [1.00, 0.50, 0.00], #  1: binding site
+    [1.00, 0.00, 0.00], #  2: false positives
+    [0.73, 0.33, 0.83], #  3: false negatives
+])
+
+# input string
+input_string = """
+Enter one of the following:
+    one or more feature indices to visualize
+    l to list features
+    y to visualize the mesh labels
+    m to visualize only the mesh
+    q to exit
+:""".strip()
+
+# main loop
+while True:
+    inp = input(input_string).strip()
+    
+    # check what was typed
+    if(inp.strip() == 'q'):
+        print("Goodbye.")
+        break
+    elif(inp.strip() == 'l'):
+        print(feature_list)
+    elif(inp.strip() == 'y'):
+        rgb = trimesh.visual.to_rgba(colors[data['Y']+1])
+        visualizeMesh(mesh, colors=rgb)
+    elif(inp.strip() == 'm'):
+        visualizeMesh(mesh)
+    elif(inp.strip() == 'c'):
+        pass
+        #P = np.load(ARGS.compare_file)
+        ## masks where labels disagree
+        #m_np = (D == 0)*(D != P)
+        #m_pn = (D == 1)*(D != P)
+        #D[m_np] = 2
+        #D[m_pn] = 3
+    else:
+        args = parser.parse_args(inp.split())
         drange = [args.l, args.u]
-        fnames = ["geomview"]
         for x in args.x:
             # check x is in range
             if(x >= size or x < 0):
-                print("{} is out of range [{}, {}]".format(x, 0, size-1))
-                continue
-            
-            print("Min: {:<.4f} Max: {:<.4f} Avg: {:<.4f} Std: {:<.4f}".format(D[:,x].min(), D[:,x].max(), D[:,x].mean(), D[:,x].std()))
-            handle = "temp_off_{}".format(x)
-            writeOFF(handle, V, F, D[:,x], colorby='face', data_range=drange)
-            fnames.append("{}.off".format(handle))
-        subprocess.call(fnames)
-        for f in fnames[1:]:
-            os.remove(f)
-else:
-    if(ARGS.compare_file):
-        P = np.load(ARGS.compare_file)
-        # masks where labels disagree
-        m_np = (D == 0)*(D != P)
-        m_pn = (D == 1)*(D != P)
-        D[m_np] = 2
-        D[m_pn] = 3
-
-    cm = colorMapper({
-        0:  (0.55, 0.70, 0.40), #(0.5, 0.0, 0.0),
-        1:  (1.00, 0.50, 0.00), #(0.0, 0.0, 0.3),
-        -1: (1.0, 1.0, 1.0), 
-        2:  (1.0, 0.0, 0.0), # false positives (red)
-        3:  (0.73, 0.33, 0.83)  # false negatives (orchard)
-    })
-    
-    handle = "temp_off"
-    writeOFF(handle, V, F, data=D, colorby='vertex', cmap=cm)
-    fname = "{}.off".format(handle)
-    subprocess.call(["geomview", fname])
-    os.remove(fname)
+                raise IndexError("{} is out of range [{}, {}]".format(x, 0, size-1))
+            print("Min: {:<.4f} Max: {:<.4f} Avg: {:<.4f} Std: {:<.4f}".format(data['X'][:,x].min(), data['X'][:,x].max(), data['X'][:,x].mean(), data['X'][:,x].std()))
+        visualizeMesh(mesh, data['X'][:, args.x], color_map=ARGS.color_map)

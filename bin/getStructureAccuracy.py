@@ -9,6 +9,7 @@ from Bio.PDB import PDBParser
 from scipy.spatial import cKDTree
 
 from geobind.nn.utils import getMetrics, report
+from geobind.structure import getAtomKDTree, getDSSP
 
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("data_file", help="list of file prefixes")
@@ -17,14 +18,11 @@ arg_parser.add_argument("-P", "--pdb_dir", default=".", help="pdb file directory
 arg_parser.add_argument("-L", "--label_dir", default=".", help="label file directory prefix")
 arg_parser.add_argument("-t", "--threshold", type=float, default=0.5, help="threshold for evaluating single-point metrics")
 arg_parser.add_argument("-l", "--level", default="R", help="level at which to perform mapping")
+arg_parser.add_argument("-o", "--output", default="log", choices=["log", "csv"])
 ARGS = arg_parser.parse_args()
 
 logging.basicConfig(format='%(levelname)s:    %(message)s', level=logging.INFO)
 
-def getAtomKDTree(atoms):
-    coords = np.array([atom.coord for atom in atoms])
-    
-    return cKDTree(coords)
 
 def mapVertexLabelsToStructure(vertices, atom_list, vertex_labels, weighting='binary', weights=None, level='R', kdtree=None, nc=None):
     # determine number of classes
@@ -145,15 +143,38 @@ def mapVertexProbabilitiesToStructure(vertices, atom_list, probabilities, level=
         
         return residue_dict
 
+def getLoopContent(structure, fileName):
+    getDSSP(structure[0], fileName)
+    acount = 0
+    lcount = 0
+    for atom in structure[0].get_atoms():
+        lcount += atom.xtra.get('ss_L', 0)
+        acount += 1
+    
+    return lcount/acount
+
+def getMeanBFactor(structure):
+    acount = 0
+    bfactor = 0
+    
+    for atom in structure.get_atoms():
+        acount += 1
+        bfactor += atom.bfactor
+    
+    return bfactor/acount
+
 pdb_parser = PDBParser()
 Y = []
 P = []
 use_header=True
+if(ARGS.output == 'csv'):
+    csv = open('data.csv', 'w')
 for filePrefix in open(ARGS.data_file):
     filePrefix = filePrefix.strip()
     
     # load PDB structure
-    structure = pdb_parser.get_structure('structure', ospj(ARGS.pdb_dir, filePrefix.rstrip("_protein")+".pdb"))
+    pdbfile =  ospj(ARGS.pdb_dir, filePrefix.rstrip("_protein")+".pdb")
+    structure = pdb_parser.get_structure('structure', pdbfile)
     atoms = [atom for atom in structure.get_atoms()]
     
     # load mesh file
@@ -181,15 +202,25 @@ for filePrefix in open(ARGS.data_file):
     
     y = (np.array(y)[:,1] >= 0.5)
     metrics = getMetrics(y, p, threshold=ARGS.threshold)
-    report(
-        [
-            ({'entity': filePrefix}, ''),
-            (metrics, 'per-datum metrics')
-        ],
-        header=use_header
-    )
+    if(ARGS.output == 'csv'):
+        mkeys = sorted(metrics.keys())
+        data = list(map(lambda key: metrics[key], mkeys))
+        data += [len(mesh.vertices), len(atoms), getLoopContent(structure, pdbfile), getMeanBFactor(structure)]
+        if(use_header):
+            header = ['prefix'] + list(mkeys) + ['num_vertices', 'num_atoms', 'loop_content', 'mean_bfactor']
+            csv.write(','.join(header))
+        csv.write('\n' + ','.join([filePrefix] + ["{:.3f}".format(d) for d in data]))
+    else:
+        report(
+            [
+                ({'entity': filePrefix}, ''),
+                (metrics, 'per-datum metrics')
+            ],
+            header=use_header
+        )
     use_header=False
-
+if(ARGS.output == 'csv'):
+    csv.close()
 Y = (np.array(Y)[:,1] >= 0.5)
 P = np.array(P)
 metrics = getMetrics(Y, P, threshold=ARGS.threshold)
