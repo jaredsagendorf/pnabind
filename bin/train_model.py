@@ -46,19 +46,27 @@ from torch_geometric.data import DataLoader, DataListLoader
 from geobind.nn.utils import ClassificationDatasetMemory
 from geobind.nn import Trainer, Evaluator
 from geobind.nn.models import NetConvEdgePool
+from geobind.nn.metrics import reportMetrics
 
-### Load the config file
+####################################################################################################
+
+# Set random seed or not
+if ARGS.no_random or ARGS.debug:
+    np.random.seed(8)
+    torch.manual_seed(0)
+
+# Load the config file
 with open(ARGS.config_file) as FH:
     C = json.load(FH)
 
-### Get run name and path
+# Get run name and path
 config = '.'.join(ARGS.config_file.split('.')[:-1])
 run_name = "{}_{}".format(C.get("run_name", config), datetime.now().strftime("%m.%d.%Y.%H.%M"))
 run_path = ospj(C.get("output_path", "."), run_name)
 if(not (os.path.exists(run_path) or ARGS.no_write) ):
     os.makedirs(run_path)
 
-### Set up logging
+# Set up logging
 log_level = logging.DEBUG if ARGS.debug else logging.INFO
 log_format = '%(levelname)s:    %(message)s'
 if(ARGS.no_write):
@@ -73,22 +81,19 @@ else:
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
 
-### Save copy of config to run directory
+# Save copy of config to run directory
 if(not ARGS.no_write):
     shutil.copyfile(ARGS.config_file, ospj(run_path, 'config.json'))
 
-### Set random seed or not
-if ARGS.no_random or ARGS.debug:
-    np.random.seed(8)
-    torch.manual_seed(0)
-
-### Set checkpoints
+# Set checkpoint values
 if(ARGS.checkpoint_every == 0 or ARGS.checkpoint_every > C["epochs"]):
     ARGS.checkpoint_every = C['epochs'] # write once at end of training
 elif(ARGS.checkpoint_every < 0):
     ARGS.checkpoint_every = False
 
-### Load training/testing data
+####################################################################################################
+
+# Load training/testing data
 train_data = [_.strip() for _ in open(ARGS.train_file).readlines()]
 valid_data = [_.strip() for _ in open(ARGS.valid_file).readlines()]
 
@@ -111,25 +116,24 @@ valid_dataset = ClassificationDatasetMemory(
 if(torch.cuda.device_count() > 1 and (not ARGS.single_gpu)):
     # prepare data for parallelization over multiple GPUs
     DL_tr = DataListLoader(train_dataset, batch_size=C.get('batch_size', 1), shuffle=True, pin_memory=True)
-    DL_vl = DataListLoader(valid_dataset, batch_size=1, shuffle=True, pin_memory=True)
+    DL_vl = DataListLoader(valid_dataset, batch_size=1, shuffle=False, pin_memory=True)
 else:
     # prepate data for single GPU or CPU 
     DL_tr = DataLoader(train_dataset, batch_size=C.get('batch_size', 1), shuffle=True, pin_memory=True)
-    DL_vl = DataLoader(valid_dataset, batch_size=1, shuffle=True, pin_memory=True) 
+    DL_vl = DataLoader(valid_dataset, batch_size=1, shuffle=False, pin_memory=True) 
 
-
-### Create the model we'll be training.
+# Create the model we'll be training.
 nF = train_dataset.num_node_features
 if C["model"]["name"] == "Net_Conv_EdgePool":
     model = NetConvEdgePool(nF, C['nc'], **C["model"]["kwargs"])
 
-### DEBUG: model parameters
+# DEBUG: log model parameters
 logging.debug("Model Summary:")
 for name, param in model.named_parameters():
     if param.requires_grad:
         logging.debug("%s: %s", name, param.data.shape)
 
-### set up multiple GPU utilization
+# Set up multiple GPU utilization
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 if(torch.cuda.device_count() > 1 and (not ARGS.single_gpu)):
     model = DataParallel(model)
@@ -139,7 +143,7 @@ else:
 model = model.to(device)
 model.device = device
 
-### set up optimizer, scheduler and loss
+# Set up optimizer, scheduler and loss
 # optimizer
 if(C["optimizer"]["name"] == "adam"):
     optimizer = torch.optim.Adam(model.parameters(), **C["optimizer"]["kwargs"])
@@ -159,16 +163,18 @@ else:
     scheduler = None
 logging.info("configured learning rate scheduler: %s", C["scheduler"]["name"])
 
-# loss function
+# Loss function
 criterion = torch.nn.functional.cross_entropy
 
-### create tensorboard writer
+# Create tensorboard writer
 if(not (ARGS.no_tensorboard or ARGS.no_write) ):
     writer = SummaryWriter(run_path)
 else:
     writer = None
 
-### do the training
+####################################################################################################
+
+# Do the training
 evaluator = Evaluator(model, post_process=torch.nn.Softmax(dim=-1))
 trainer = Trainer(model, optimizer, criterion, scheduler, evaluator,
     checkpoint_path=run_path,
@@ -177,45 +183,32 @@ trainer = Trainer(model, optimizer, criterion, scheduler, evaluator,
 )
 trainer.train(C["epochs"], DL_tr, DL_vl, checkpoint_every=ARGS.checkpoint_every)
 
-## write training predictions to file
-#model.eval()
-#if(not ARGS.no_write):
-    #y_gt, prob = evaluateDataset(model, train_dataset, mask=False)
-    #np.save(ospj(run_path, "train_vertex_labels.npy"), y_gt)
-    #np.save(ospj(run_path, "train_vertex_probs.npy"), prob)
+# Write final training predictions to file
+if(not ARGS.no_write):
+    y_gt, prob = evaluator.eval(DL_tr, mask=False)
+    np.savez_compressed(ospj(run_path, "training_set_predictions.npz"), Y=y_gt, P=prob)
 
-## evaluate test accuracy
-#if(ARGS.write_test_predictions and (not ARGS.no_write)):
-    #prediction_path = ospj(run_path, "predictions")
-    #os.mkdir(prediction_path)
+####################################################################################################
 
-#i = 0
-#use_header = True
-#threshold = trainer.metrics_history['train', 'threshold'][-1]
-#with torch.no_grad():
-    #for test_batch in test_dataset:
-        #batch, y, mask = processBatch(model, test_batch)
-        #output = model(batch)
+# Evaluate validation dataset
+if(ARGS.write_test_predictions and (not ARGS.no_write)):
+    prediction_path = ospj(run_path, "predictions")
+    os.mkdir(prediction_path)
+    val_out = evaluator.eval(DL_vl, mask=False, batchwise=True, return_masks=True)
+    lw = max([len(_)-len("_protein_data.npz") for _ in valid_data])
+    use_header = True
+    threshold = trainer.metrics_history['train']['threshold'][-1]
+    
+    for i, _ in enumerate(val_out):
+        y, prob, mask = _
+        name = valid_data[i].replace("_protein_data.npz", "")
         
-        ## compute predictions
-        #mask = mask.cpu()
-        #y = y.cpu()
-        #prob = F.softmax(output, dim=1).cpu()
-        #y_pr = (prob[:,1] >= threshold).long().cpu()
+        # compute metrics
+        metrics = evaluator.getMetrics(y[mask], prob[mask], threshold=threshold)
+        reportMetrics({"validation predictions": metrics}, label=("Protein Identifier", name), label_width=lw, header=use_header)
         
-        ## compute metrics
-        #metrics = getMetrics(y[mask], prob[mask], threshold=threshold)
-        #report(
-            #[
-                #({'protein (<pdbid>.<dna_entity>_<protein_entity>.<model>)': test_data[i]}, ''),
-                #(metrics, 'test metrics')
-            #],
-            #header=use_header
-        #)
-        
-        ## write predictions to file
-        #if(ARGS.write_test_predictions and (not ARGS.no_write)):
-            #np.save(ospj(prediction_path, "%s_vertex_labels_p.npy" % (test_data[i])), y_pr)
-            #np.save(ospj(prediction_path, "%s_vertex_probs.npy" % (test_data[i])), prob)
-        #i += 1
-        #use_header=False
+        # write predictions to file
+        if(ARGS.write_test_predictions and (not ARGS.no_write)):
+            y_pr = (prob[:,1] >= threshold)
+            np.savez_compressed(ospj(prediction_path, "%s_predict.npz" % (name)), Ypr=y_pr, P=prob)
+        use_header=False
