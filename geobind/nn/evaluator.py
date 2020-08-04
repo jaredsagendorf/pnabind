@@ -60,13 +60,14 @@ class Evaluator(object):
                 raise ValueError("The argument 'metrics' must be a dictionary of kwargs and metric names or 'none'!")
             self.metrics = metrics
     
-    def eval(self, dataset, batchwise=False, mask=True):
-        """ Returns numpy arrays!!!"""
+    def eval(self, dataset, batchwise=False, mask=True, return_masks=False):
+        """Returns numpy arrays!!!"""
         self.model.eval()
         
         # evaluate model on given dataset
         y_gts = []
         outs = []
+        masks = []
         with torch.no_grad():
             for batch in dataset:
                 batch, y, bmask = processBatch(self.model, batch)
@@ -80,31 +81,46 @@ class Evaluator(object):
                 
                 y_gts.append(y.cpu().numpy())
                 outs.append(out.cpu().numpy())
-            
+                if(return_masks):
+                    masks.append(bmask.cpu().numpy())
+        
         # decide what to do with each data item
         if(batchwise):
             # return per-batch output
-            return zip(y_gts, outs)
+            if(return_masks):
+                return zip(y_gts, outs, masks)
+            else:
+                zip(y_gts, outs)
         else:
             # concatenate entire dataset
-            return np.concatenate(y_gts, axis=0), np.concatenate(outs, axis=0)
+            if(return_masks):
+                return np.concatenate(y_gts, axis=0), np.concatenate(outs, axis=0), np.concatenate(masks, axis=0)
+            else:
+                return np.concatenate(y_gts, axis=0), np.concatenate(outs, axis=0)
     
-    def getMetrics(self, dataset, threshold=None, threshold_metric='balanced_accuracy', **kwargs):
+    def getMetrics(self, *args, threshold=None, threshold_metric='balanced_accuracy', report_threshold=False, **kwargs):
         if(self.metrics is None):
             return {}
         ## TODO: generalize to handle multi-class, regression
         
-        y_gt, outs = self.eval(dataset, **kwargs)
+        # Determine what we were given (a dataset or labels/predictions)
+        if(len(args) == 1):
+            y_gt, outs = self.eval(args[0], **kwargs)
+        else:
+            y_gt, outs = args
         
+        # Compute metrics
+        metric_values = {}
         if(self.model_type == 'binary'):
             if(threshold is None):
                 # sample n_samples threshold values
                 threshold, _  = chooseBinaryThreshold(y_gt, outs[:,1], metric_fn=METRICS_FN[threshold_metric], **self.metrics[threshold_metric])
             y_pr = (outs[:,1] >= threshold)
+            if(report_threshold):
+                metric_values['threshold'] = threshold
         elif(self.model_type == 'multiclass'):
             y_pr = np.argmax(outs, axis=1)
         
-        metric_values = {}
         for metric, kw in self.metrics.items():
             if(metric in ['auprc', 'auroc']):
                 # AUC metrics
