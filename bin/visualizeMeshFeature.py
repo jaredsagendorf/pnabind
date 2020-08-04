@@ -49,10 +49,13 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', max_width=4
         m.visual.vertex_colors = vertex_colors[i] 
         offset += m.bounding_box.extents[si]
         scene.append(m)
+    print("returning scene")
     return trimesh.Scene(scene).show(**kwargs)
 
 # Read in data files
 data = np.load(ARGS.data_file)
+if(ARGS.extras_file):
+    extras = np.load(ARGS.extras_file)
 mesh = trimesh.Trimesh(vertices=data['V'], faces=data['F'], process=False)
 
 # loop input parser
@@ -90,28 +93,35 @@ colors = np.array([
 # input string
 input_string = """
 Enter one of the following:
-    one or more feature indices to visualize
     l to list features
-    y to visualize the mesh labels
     m to visualize only the mesh
     q to exit
+    the single-character name of a data field
+    one or more feature indices to visualize
 :""".strip()
+
+### TODO: add selection like "Y X0 X1 YPR"
 
 # main loop
 while True:
     inp = input(input_string).strip()
     
     # check what was typed
-    if(inp.strip() == 'q'):
+    INP = inp.strip()
+    if(INP == 'q'):
         print("Goodbye.")
         break
-    elif(inp.strip() == 'l'):
+    elif(INP == 'l'):
         print(feature_list)
-    elif(inp.strip() == 'y'):
-        rgb = trimesh.visual.to_rgba(colors[data['Y']+1])
-        visualizeMesh(mesh, colors=rgb)
-    elif(inp.strip() == 'm'):
+    elif(INP == 'm'):
         visualizeMesh(mesh)
+    elif(INP in data or INP in extras):
+        if(INP in data):
+            D = data[INP]
+        else:
+            D = extras[INP]
+        rgb = trimesh.visual.to_rgba(colors[D+1])
+        visualizeMesh(mesh, colors=rgb)
     elif(inp.strip() == 'c'):
         pass
         #P = np.load(ARGS.compare_file)
