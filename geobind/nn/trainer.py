@@ -93,7 +93,7 @@ class Trainer(object):
                     if(self.writer):
                         self.writer.add_scalar("train/batch_loss", loss.item(), self.batch_count)
                 
-                ######### adding scalar paramters of CRFLayer to tensorboard ######
+                ######### adding scalar paramters of model to tensorboard ######
                 if((params_to_write is not None) and self.writer):
                     for name, param in self.model.named_parameters():
                         for param_to_write in params_to_write:
