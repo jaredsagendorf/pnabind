@@ -52,7 +52,7 @@ class Trainer(object):
         self.scheduler = scheduler
         self.evaluator = evaluator
         self.writer = writer
-        
+
         self.quiet = quiet
         self.checkpoint_path = checkpoint_path
         if isinstance(self.model, DataParallel):
@@ -67,7 +67,7 @@ class Trainer(object):
         self.metrics_history = {}
         self.first_epoch = True
     
-    def train(self, nepochs, dataset, validation_dataset=None, batch_loss_every=4, eval_every=2, checkpoint_every=None):
+    def train(self, nepochs, dataset, validation_dataset=None, batch_loss_every=4, eval_every=2, checkpoint_every=None, params_to_write=None):
         # begin training
         if not self.quiet:
             logging.info("Beginning Training ({} epochs)".format(nepochs))
@@ -93,6 +93,14 @@ class Trainer(object):
                     if(self.writer):
                         self.writer.add_scalar("train/batch_loss", loss.item(), self.batch_count)
                 
+                ######### adding scalar paramters of CRFLayer to tensorboard ######
+                if((params_to_write is not None) and self.writer):
+                    for name, param in self.model.named_parameters():
+                        for param_to_write in params_to_write:
+                            if ((param_to_write in name) and param.requires_grad):
+                                self.writer.add_scalar(name, param.data.cpu().numpy()[0], self.batch_count)
+                                self.writer.add_scalar(name + "_grad", param.grad.cpu().numpy()[0], self.batch_count)
+                               #print (name, param.data, param.requires_grad, param.grad)
                 # update batch count
                 self.batch_count += 1
                 self.new_epoch = False
