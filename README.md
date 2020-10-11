@@ -2,14 +2,14 @@
 
 ## Installation
 - clone this repository to some local directory
-- cd into that directory and run 'pip install -e'
+- cd into that directory and run 'pip install -e .'
 - install the required dependencies
 
 ## Requirements
 Required for running and training models
 - python (3.6+)
-- pytorch (1.4)+
-- pytorch-geometric (1.4.3)+
+- pytorch (1.6)+
+- pytorch-geometric (1.6.1)+
 - sklearn
 - numpy
 - scipy
