@@ -81,7 +81,6 @@ class Trainer(object):
                 "epoch_start": []
             }
         
-        oom = False
         batch_count = 0
         first_epoch = True
         for epoch in range(nepochs):
@@ -95,6 +94,7 @@ class Trainer(object):
             epoch_loss = 0
             n = 0
             for batch in dataset:
+                oom = False
                 # update the model weights
                 batch, y, mask = processBatch(self.device, batch)
                 
@@ -130,7 +130,7 @@ class Trainer(object):
             if (epoch % eval_every == 0) and (self.evaluator is not None):
                 metrics = {}
                 metrics['train'] = self.evaluator.getMetrics(dataset, use_mask=True, report_threshold=True)
-                metrics['train']['loss'] = epoch_loss/n
+                metrics['train']['loss'] = epoch_loss/(n + 1e-5)
                 
                 if(validation_dataset is not None):
                     metrics['val'] = self.evaluator.getMetrics(validation_dataset, use_mask=True)
