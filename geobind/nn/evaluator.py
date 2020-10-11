@@ -45,9 +45,9 @@ class Evaluator(object):
                     'auroc': {},
                     'auprc': {},
                     'balanced_accuracy': {},
-                    'mean_iou': {},
-                    'precision': {},
-                    'recall': {},
+                    'mean_iou': {'average': 'weighted'},
+                    'precision': {'average': 'binary'},
+                    'recall': {'average': 'binary'},
                     'accuracy': {}
                 }
             elif(model_type == 'multiclass'):

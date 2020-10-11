@@ -170,7 +170,7 @@ else:
 
 # Create the model we'll be training.
 nF = train_dataset.num_node_features
-if C["model"]["name"] == "Net_Conv_EdgePool":
+if C["model"]["name"] == "NetConvEdgePool":
     model = NetConvEdgePool(nF, C['nc'], **C["model"]["kwargs"])
 elif C["model"]["name"] == "PointNetPP":
     model = PointNetPP(nF, C['nc'], **C["model"]["kwargs"])
