@@ -209,8 +209,8 @@ if(C["scheduler"]["name"] == "ReduceLROnPlateau"):
 elif(C["scheduler"]["name"] == "ExponentialLR"):
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, **C["scheduler"]["kwargs"])
 elif(C["scheduler"]["name"] == "OneCycleLR"):
-    nsteps = len(train_data)//C["batch_size"]
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, epochs=C["epochs"], steps_per_epoch=nsteps, **C["scheduler"]["kwargs"])
+    nsteps = int(np.ceil(len(train_data)/(C["batch_size"]*max(1, torch.cuda.device_count()))))
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, C["scheduler"]["max_lr"], epochs=C["epochs"], steps_per_epoch=nsteps, **C["scheduler"]["kwargs"])
 else:
     scheduler = None
 logging.info("configured learning rate scheduler: %s", C["scheduler"]["name"])
