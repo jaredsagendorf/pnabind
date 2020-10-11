@@ -17,12 +17,13 @@ class AtomToClassMapper(object):
             if regexes in data.label_sets:
                 self.regexes = data.label_sets[regexes]
             else:
-                with open(regexes_file) as FH:
+                with open(regexes) as FH:
                     self.regexes = json.load(FH)
         else:
             self.regexes = regexes
         self.default = self.regexes['default']
         self.nc = self.regexes['nc']
+        self.class_labels = self.regexes['classes']
         self.structure = structure
         
         assert isinstance(self.default, int)
@@ -155,14 +156,9 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_to_class,
         # check if we include hydrogens
         if(not hydrogens and atom.element == 'H'):
             continue
-        #aname = atom.name.strip()
-        residue = atom.get_parent()#.get_resname().strip()
         
         # assign a class to this atom
-        #if(nc == 2):
-        #    c = 1
-        #else:
-        #    c = atom_to_class[(rname, aname)]
+        residue = atom.get_parent()
         c = atom_mapper(residue, atom)
         
         # get nearest vertices
@@ -198,7 +194,7 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_to_class,
         ind = [i for j in Kn.query_ball_point(mesh.vertices[Yb], mask_cutoff) for i in j]
         Y[Yn[ind]] = -1
     
-    return Y
+    return Y, atom_mapper
 
 def assignMeshLabelsFromList(structure, mesh, residue_ids, distance_cutoff=2.5, smooth=False):
     # loop over residues

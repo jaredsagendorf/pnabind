@@ -23,9 +23,11 @@ def registerMetric(name, fn):
     METRICS_FN[name] = fn
 
 class Evaluator(object):
-    def __init__(self, model, metrics=None, model_type='binary', post_process=None):
+    def __init__(self, model, device="cpu", metrics=None, model_type='binary', post_process=None):
         ##TO DO - ADD METRICS AND KWARGS BASED ON MODEL TYPE
         self.model = model # must implement the 'forward' method
+        self.device = device
+        
         if(post_process is None):
             # identity function
             post_process = lambda x: x
@@ -60,7 +62,8 @@ class Evaluator(object):
                 raise ValueError("The argument 'metrics' must be a dictionary of kwargs and metric names or 'none'!")
             self.metrics = metrics
     
-    def eval(self, dataset, batchwise=False, mask=True, return_masks=False):
+    @torch.no_grad()
+    def eval(self, dataset, batchwise=False, use_mask=True, return_masks=False):
         """Returns numpy arrays!!!"""
         self.model.eval()
         
@@ -68,21 +71,19 @@ class Evaluator(object):
         y_gts = []
         outs = []
         masks = []
-        with torch.no_grad():
-            for batch in dataset:
-                batch, y, bmask = processBatch(self.model, batch)
-                output = self.model(batch)
-                if(mask):
-                    y = y[bmask]
-                    out = self.post(output[bmask])
-                else:
-                    y = y
-                    out = self.post(output)
-                
-                y_gts.append(y.cpu().numpy())
-                outs.append(out.cpu().numpy())
-                if(return_masks):
-                    masks.append(bmask.cpu().numpy())
+        for batch in dataset:
+            batch, y, mask = processBatch(self.device, batch)
+            output = self.model(batch)
+            if(use_mask):
+                y = y[mask]
+                out = self.post(output[mask])
+            else:
+                out = self.post(output)
+            
+            y_gts.append(y.cpu().numpy())
+            outs.append(out.cpu().numpy())
+            if(return_masks):
+                masks.append(mask.cpu().numpy())
         
         # decide what to do with each data item
         if(batchwise):

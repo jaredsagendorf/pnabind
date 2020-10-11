@@ -21,6 +21,8 @@ arg_parser.add_argument("-F", "--no_features", dest="no_features", action='store
                 help="do not generate any mesh features for each interface")
 arg_parser.add_argument("-A", "--no_adjacency", dest="no_adjacency", action='store_true', default=False,
                 help="do not write mesh adjacency matrix to file")
+arg_parser.add_argument("-d", "--debug", action='store_true', default=False,
+                help="write additional information")
 ARGS = arg_parser.parse_args()
 
 # builtin modules
@@ -84,7 +86,7 @@ def main():
     else:
         standard_area = D.standard_sesa
     
-    # Load the interface file which describes a list of DNA-protein interfaces to process
+    ### Load the interface file which describes a list of DNA-protein interfaces to process ########
     listFile = ARGS.structures_file
     PROCESSED = open(ARGS.output_file, "w")
     for fileName in open(listFile):
@@ -93,16 +95,13 @@ def main():
             # skip commented lines
             continue
         protein_id = '.'.join(fileName.split('.')[0:-1]) + '_protein'
-        structure = StructureData(fileName, path=C["PDB_FILES_PATH"])
+        structure = StructureData(fileName, name=protein_id, path=C["PDB_FILES_PATH"])
         protein, dna = getEntities(structure, D.regexes)
         
         # Clean the protein entity
-        protein = geobind.structure.cleanProtein(protein, res_mutator, hydrogens=C['HYDROGENS'])
+        protein, pqr = geobind.structure.cleanProtein(protein, res_mutator, hydrogens=C['HYDROGENS'])
         
-        # Get radii/charge parameters
-        protein, pqr = geobind.structure.getAtomChargeRadius(protein, protein_id, keepPQR=True, hydrogens=C['HYDROGENS'])
-        
-        ### MESH GENERATION ####################################################################
+        ### MESH GENERATION ########################################################################
         # Write a PDB file matching chain
         pdb = protein.save()
         
@@ -113,7 +112,8 @@ def main():
             mesh = geobind.mesh.generateMesh(protein, 
                 prefix=mesh_prefix,
                 basedir=C["MESH_FILES_PATH"],
-                kwargs=mesh_kwargs
+                clean=(not ARGS.debug),
+                **mesh_kwargs
             )
             logging.info("Computed new mesh for: %s", protein_id)
             meshFile = mesh.save(C['MESH_FILES_PATH'], overwrite=True)
@@ -128,7 +128,8 @@ def main():
                 mesh = geobind.mesh.generateMesh(protein, 
                     prefix=mesh_prefix,
                     basedir=C["MESH_FILES_PATH"],
-                    kwargs=mesh_kwargs
+                    clean=(not ARGS.debug),
+                    **mesh_kwargs
                 )
                 logging.info("Computed new mesh for: %s", protein_id)
                 meshFile = mesh.save(C['MESH_FILES_PATH'])
@@ -179,19 +180,19 @@ def main():
             FEATURES.append(Xp)
             
             # Compute Electrostatic features
-            if(not ARGS.no_electrostatics):
+            if not ARGS.no_electrostatics:
                 # get the potential files
                 potfile = ospj(C["ELECTROSTATICS_PATH"], protein_id+"_potential.dx")
                 accessfile = ospj(C["ELECTROSTATICS_PATH"], protein_id+"_access.dx")
-                if((not ARGS.refresh) and os.path.exists(potfile) and os.path.exists(accessfile)):
+                if (not ARGS.refresh) and os.path.exists(potfile) and os.path.exists(accessfile):
                     phi = Interpolator(potfile)
                     logging.info("Loaded potential %s from file.", potfile)
                     acc = Interpolator(accessfile)
                     logging.info("Loaded accessibility %s from file.", accessfile)
                 else:
-                    phi, acc = geobind.structure.runAPBS(protein, protein_id, pqr="{}.pqr".format(protein_id), basedir=C["ELECTROSTATICS_PATH"])
+                    phi, acc = geobind.structure.runAPBS(protein, protein_id, pqr=pqr, basedir=C["ELECTROSTATICS_PATH"])
                 
-                Xe, features_e = geobind.mesh.mapElectrostaticPotentialToMesh(mesh, phi, acc)
+                Xe, features_e = geobind.mesh.mapElectrostaticPotentialToMesh(mesh, phi, acc, efield=True, diff_method='five_point_stencil')
                 FEATURE_NAMES += features_e
                 FEATURES.append(Xe)
             
@@ -199,13 +200,14 @@ def main():
         if(not ARGS.no_labels):
             # Compute labels
             assert ARGS.moieties is not None
-            Y = geobind.assignMeshLabelsFromStructure(dna, mesh, ARGS.moieties, smooth=C["SMOOTH_LABELS"], mask=C["MASK_LABELS"])
+            Y, class_map = geobind.assignMeshLabelsFromStructure(dna, mesh, ARGS.moieties, smooth=C["SMOOTH_LABELS"], mask=C["MASK_LABELS"])
         
         ### OUTPUT #############################################################################
         # Write features to disk
         arrays = {}
         arrays['V'] = mesh.vertices
         arrays['F'] = mesh.faces
+        arrays['name'] = protein_id
         if(mesh.vertex_normals is not None):
             arrays['N'] = mesh.vertex_normals
         
@@ -218,6 +220,7 @@ def main():
         # Mesh labels
         if(not ARGS.no_labels):
             arrays['Y'] = Y
+            arrays['class_names'] = class_map.class_labels
         
         # Write mesh data to disk
         fname = ospj(C['FEATURE_DATA_PATH'], "{}_data.npz".format(protein_id))
@@ -233,7 +236,7 @@ def main():
         
         ### CLEAN-UP ###########################################################################
         os.remove(pdb)
-        os.remove("{}.pqr".format(protein_id))
+        os.remove(pqr)
     
     PROCESSED.close()
     return 0

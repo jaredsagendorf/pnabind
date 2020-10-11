@@ -7,11 +7,13 @@ from torch_geometric.transforms import PointPairFeatures, GenerateMeshNormals
 from torch_geometric.data import Data
 
 # geobind packages
-#from geobind.nn.utils import computePPEdgeFeatures
 from geobind.nn.layers import EdgePooling_EF
 
 class NetConvEdgePool(torch.nn.Module):
-    def __init__(self, nIn, nOut,
+    GMN = GenerateMeshNormals()
+    PPF = PointPairFeatures()
+    
+    def __init__(self, nIn, nOut=None,
             conv_args=None,
             pool_args=None,
             nhidden=32,
@@ -24,13 +26,10 @@ class NetConvEdgePool(torch.nn.Module):
             dropout=0.5,
             edge_dim=4,
             smoothing=None,
-            name='net_conv_edge_pool'
+            name='net_conv_edge_pool',
+            lin=True
         ):
         super(NetConvEdgePool, self).__init__()
-        
-        self.in_channels = nIn
-        self.out_channels = nOut
-        self.hidden_channels = nhidden
         self.depth = depth
         self.dropout = dropout
         self.use_skips = use_skips
@@ -40,6 +39,7 @@ class NetConvEdgePool(torch.nn.Module):
         self.edge_dim = edge_dim
         self.smoothing = smoothing
         self.name = name
+        self.lin = lin
         if(act == 'relu'):
             self.act = F.relu
         elif(act == 'elu'):
@@ -89,36 +89,51 @@ class NetConvEdgePool(torch.nn.Module):
         self.bottom_convs = torch.nn.ModuleList()
         self.up_convs = torch.nn.ModuleList()
         
-        # down FC layers (dimentionality reduction)
-        self.lin1 = nn.Linear(nIn, nhidden)
+        # set size of every layer
+        num_lin = 4 # 1 + 3
+        if isinstance(nhidden, int):
+            nhidden = [nhidden]*(num_top_convs + depth + num_bottom_convs + depth + num_lin)
+        
+        # down FC layer (dimentionality reduction)
+        self.lin1 = nn.Linear(nIn, nhidden[0])
         
         # top convolutions
         for i in range(num_top_convs):
-            self.top_convs.append(self.makeConv(nhidden, nhidden, conv_args))
+            self.top_convs.append(self.makeConv(nhidden[i], nhidden[i+1], conv_args))
         
         # down layers
         channels = nhidden
-        for i in range(depth):
+        for i in range(num_top_convs, num_top_convs + depth):
             # convolution
-            self.down_convs.append(self.makeConv(channels, channels, conv_args))
+            self.down_convs.append(self.makeConv(nhidden[i], nhidden[i+1], conv_args))
             # pooling
-            self.down_pools.append(self.makePool(channels, **pool_args))
+            self.down_pools.append(self.makePool(nhidden[i+1], **pool_args))
         
         # bottom convolutions
-        for i in range(num_bottom_convs):
-            self.bottom_convs.append(self.makeConv(channels, channels, conv_args))
+        for i in range(num_top_convs + depth, num_top_convs + depth + num_bottom_convs):
+            self.bottom_convs.append(self.makeConv(nhidden[i], nhidden[i+1], conv_args))
         
         # up layers
-        in_channels = nhidden
-        out_channels = in_channels
-        for i in range(depth):
-            in_channels = in_channels if sum_skips else in_channels + nhidden
-            out_channels = in_channels
+        offset = 2*num_top_convs + 2*depth + num_bottom_convs# - 1
+        for i in range(num_top_convs + depth + num_bottom_convs, num_top_convs + depth + num_bottom_convs + depth):
+            if self.use_skips:
+                j = offset - i
+                if sum_skips and nhidden[i] == nhidden[j]:
+                    in_channels = nhidden[i]
+                    out_channels = nhidden[i+1]
+                else:
+                    in_channels = nhidden[i] + nhidden[j]
+                    out_channels = nhidden[i+1]
+            else:
+                in_channels = nhidden[i]
+                out_channels = nhidden[i+1]
             self.up_convs.append(self.makeConv(in_channels, out_channels, conv_args))
         
-        # up FC layers
-        self.lin2 = nn.Linear(out_channels, out_channels//2)
-        self.lin3 = nn.Linear(out_channels//2, nOut)
+        if lin:
+            # up FC layers
+            self.lin2 = nn.Linear(nhidden[-3], nhidden[-2])
+            self.lin3 = nn.Linear(nhidden[-2], nhidden[-1])
+            self.lin4 = nn.Linear(nhidden[-1], nOut)
     
     def makePool(self, nin, name=None, **kwargs):
         # Edge Pool
@@ -226,10 +241,25 @@ class NetConvEdgePool(torch.nn.Module):
             new_data = Data(x=new_x, edge_index=new_edge_index, pos=new_pos, face=new_face, batch=new_batch)
             new_data.unpool_info = unpool_info
             
-            if(self.edge_features):
-                computePPEdgeFeatures(new_data, scale=self.scale_edge_features)
+            if self.edge_features:
+                if new_data.norm is None:
+                    self.GMN(new_data)
+                    self.PPF(new_data)
+                
+                # scale edge features to lie within [0,1]
+                if self.scale_edge_features == "clip":
+                    e_mean = data.edge_attr.mean(axis=0)
+                    e_std = data.edge_attr.std(axis=0)
+                    e_min = e_mean - 2*e_std
+                    e_max = e_mean + 2*e_std
+                    data.edge_attr = torch.clamp((data.edge_attr - e_min)/(e_max - e_min), min=0.0, max=1.0)
+                elif self.scale_edge_features == "norm":
+                    e_mean = data.edge_attr.mean(axis=0)
+                    e_std = data.edge_attr.std(axis=0)
+                    data.edge_attr = (data.edge_attr - e_mean)/e_std
             else:
-                computePPEdgeFeatures(new_data, norm_only=True)
+                if new_data.norm is None:
+                    self.PPF(new_data)
         else:
             new_data = Data(x=new_x, edge_index=new_edge_index, batch=new_batch)
             new_data.unpool_info = unpool_info
@@ -237,8 +267,10 @@ class NetConvEdgePool(torch.nn.Module):
         return new_data
     
     def forward(self, data, debug=False):
-        graph_activations = [data]
         skip_connections = []
+        graph_activations = []
+        if self.depth > 0:
+            graph_activations.append(data)
         
         # lin1
         x = self.act(self.lin1(data.x))
@@ -285,9 +317,14 @@ class NetConvEdgePool(torch.nn.Module):
             
             x = self.act(self.up_convs[i](*args))
         
-        # lin 2-3
-        x = self.act(self.lin2(x))
-        x = self.lin3(x)
+        del skip_connections
+        del graph_activations
+        
+        # lin 2-4
+        if self.lin:
+            x = self.act(self.lin2(x))
+            x = self.act(self.lin3(x))
+            x = self.lin4(x)
         
         return x
     
@@ -297,79 +334,3 @@ class NetConvEdgePool(torch.nn.Module):
             prob = F.softmax(x, dim=1)
             
             return prob, (pred[:,1] >= threshold).long()
-
-#class Net_FeaST(torch.nn.Module):
-    #def __init__(self, nF, nC, nhidden=20, nheads=6, dropout=0.5):
-        #super(Net_FeaST, self).__init__()
-        
-        #self.conv1 = FeaStConv(nF, nhidden, nheads)
-        #self.conv2 = FeaStConv(nhidden, nhidden, nheads)
-        #self.conv3 = FeaStConv(nhidden, nhidden, nheads)
-        #self.fc1 = nn.Linear(nhidden, int(nhidden/2))
-        #self.fc2 = nn.Linear(int(nhidden/2), nC)
-        
-        #self.dropout = dropout
-        
-    #def forward(self, data):
-        #x = data.x
-        #edge_index = data.edge_index
-        
-        ## conv 1
-        #x = F.relu(self.conv1(x, edge_index))
-        #x = F.dropout(x, self.dropout, training=self.training)
-        
-        ## conv 2
-        #x = F.relu(self.conv2(x, edge_index))
-        #x = F.dropout(x, self.dropout, training=self.training)
-        
-        ## conv 3
-        #x = F.relu(self.conv3(x, edge_index))
-        
-        ## lin 1
-        #x = F.relu(self.fc1(x))
-        
-        ## lin 2
-        #x = self.fc2(x)
-        
-        #return F.log_softmax(x, dim=1)
-
-#class Net_Spline(torch.nn.Module):
-    #def __init__(self, nIn, nOut, nHidden=[16, 32, 32, 8], dropout=0.5, dim=4, kernel_size=5):
-        #super(Net_Spline, self).__init__()
-        
-        ## Network layers
-        #self.lin1 = nn.Linear(nIn, nHidden[0])
-        #self.conv1 = SplineConv(nHidden[0], nHidden[1], dim, kernel_size, is_open_spline=[True, False, False, False], degree=1)
-        #self.conv2 = SplineConv(nHidden[1], nHidden[2], dim, kernel_size, is_open_spline=[True, False, False, False], degree=1)
-        #self.conv3 = SplineConv(nHidden[2], nHidden[2], dim, kernel_size, is_open_spline=[True, False, False, False], degree=1)
-        #self.lin2 = nn.Linear(nHidden[2], nHidden[3])
-        #self.lin3 = nn.Linear(nHidden[3], nOut)
-        
-        #self.dropout = dropout
-        
-        ## transforms
-        #self.ppf = PointPairFeatures()
-        #self.gmn = GenerateMeshNormals()
-    
-    #def forward(self, data):
-        ## compute edge features if needed
-        #if(data.norm is None):
-            #data = self.gmn(data)
-        #if(data.edge_attr is None):
-            #data = self.ppf(data)
-        
-        ## lin1
-        #x = F.relu(self.lin1(data.x))
-        
-        ## conv layers
-        #x = F.relu(self.conv1(x, data.edge_index, data.edge_attr))
-        #x = F.dropout(x, self.dropout, training=self.training)
-        #x = F.relu(self.conv2(x, data.edge_index, data.edge_attr))
-        #x = F.dropout(x, self.dropout, training=self.training)
-        #x = F.relu(self.conv2(x, data.edge_index, data.edge_attr))
-        
-        ## final layers
-        #x = F.relu(self.lin2(x))
-        #x = self.lin3(x)
-        
-        #return F.log_softmax(x, dim=1)

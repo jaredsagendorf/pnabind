@@ -12,108 +12,137 @@ from geobind.nn.utils import classWeights
 from geobind.nn import processBatch
 from geobind.nn.metrics import reportMetrics
 
-#class History(object):
-    #def __init__(self):
-        #self._data = {}
-        
-    #def update(self, tag, epoch, y, **kwargs):
-        #data = self._data
-        
-        ## check if we have seen this tag before
-        #if(tag not in data):
-            #data[tag] = {'y': [[]]}
-            #for key in kwargs:
-                #data[tag][key] = [[]] # 2D of shape EPOCH x BATCH
-        #kwargs['y'] = y
-        
-        ## add more epoch slots if we need them
-        #for key in data[tag]:
-            #while(epoch + 1 > len(data[tag][key])):
-                #data[tag][key].append([[]])
-        
-        ## update data
-        #for key in data[tag]:
-            #data[tag][key][epoch].append(kwargs[key])
+class Scheduler(object):
+    def __init__(self, scheduler):
+        self.epoch = 0
+        self.scheduler = scheduler
+        self.history = {
+            "loss": 0,
+            "batch_count": 0
+        }
     
-    #def __getitem__(self, tag, name, epoch=None, batch=None):
-        #if(epoch is None):
-            #return self._data[tag][name]
-        #elif(batch is None):
-            #return self._data[tag][name][epoch]
-        #else:
-            #return self._data[tag][name][epoch][batch]
+    def step(self, epoch, loss, **kwargs):
+        # per-epoch schedulers
+        new_epoch = (epoch > self.epoch)
+        if new_epoch:
+            # we are in a new epoch, update per-epoch schedulers
+            self.epoch = epoch
+            if isinstance(self.scheduler, ReduceLROnPlateau):
+                mean_loss = self.history['loss']/self.history["batch_count"]
+                self.scheduler.step(mean_loss)
+                self.history["loss"] = 0
+                self.history["batch_count"] = 0
+            elif isinstance(self.scheduler, ExponentialLR):
+                self.scheduler.step()
+        
+        # per-batch schedulers
+        if isinstance(self.scheduler, OneCycleLR):
+            self.scheduler.step()
+        elif isinstance(self.scheduler, ReduceLROnPlateau):
+            self.history["loss"] += loss
+            self.history["batch_count"] += 1
 
 class Trainer(object):
-    def __init__(self, model, optimizer, criterion, scheduler=None, evaluator=None, writer=None, checkpoint_path='.', quiet=True):
+    def __init__(self, model, optimizer, criterion, device='cpu', scheduler=None, evaluator=None, writer=None, checkpoint_path='.', quiet=True):
         # parameters
         self.model = model
         self.optimizer = optimizer
         self.criterion = criterion
-        self.scheduler = scheduler
         self.evaluator = evaluator
         self.writer = writer
-        
+        self.device = device
         self.quiet = quiet
         self.checkpoint_path = checkpoint_path
+        
+        # set up scheduler
+        if scheduler is not None:
+            scheduler = Scheduler(scheduler)
+        self.scheduler = scheduler
+        
+        # get model name
         if isinstance(self.model, DataParallel):
             self.model_name = self.model.module.name
         else:
             self.model_name = self.model.name
         
         # history
-        self.batch_count = 0
-        self.epoch = 0
-        self.new_epoch = False
         self.metrics_history = {}
-        self.first_epoch = True
     
-    def train(self, nepochs, dataset, validation_dataset=None, batch_loss_every=4, eval_every=2, checkpoint_every=None):
+    def train(self, nepochs, dataset, validation_dataset=None, batch_loss_every=4, eval_every=2, 
+                    checkpoint_every=None, debug=False, optimizer_kwargs={}, scheduler_kwargs={}):
         # begin training
         if not self.quiet:
             logging.info("Beginning Training ({} epochs)".format(nepochs))
         
+        if debug:
+            mem_stats = {
+                "current": [],
+                "peak": [],
+                "epoch_start": []
+            }
+        
+        oom = False
+        batch_count = 0
+        first_epoch = True
         for epoch in range(nepochs):
             # set model to training mode
             self.model.train()
             
+            if debug:
+                mem_stats['epoch_start'].append(batch_count)
+            
             # forward + backward + update
-            self.new_epoch = True
-            batch_losses = []
+            epoch_loss = 0
+            n = 0
             for batch in dataset:
                 # update the model weights
-                batch, y, mask = processBatch(self.model, batch)
-                loss = self.optimizer_step(batch, y, mask)
+                batch, y, mask = processBatch(self.device, batch)
                 
+                # check for OOM errors
+                try:
+                    loss = self.optimizer_step(batch, y, mask, **optimizer_kwargs)
+                except RuntimeError: # out of memory
+                    logging.info("Ran out of memory -- skipping batch.")
+                    oom = True
+                if oom:
+                    continue
+                
+                if debug:
+                    mem_stats['peak'].append(torch.cuda.max_memory_allocated(self.device)/1e6)
+                    mem_stats['current'].append(torch.cuda.memory_allocated(self.device)/1e6)
+                    
                 # update scheduler
-                self.scheduler_step(loss)
+                if self.scheduler is not None:
+                    self.scheduler.step(epoch, loss, **scheduler_kwargs)
                 
                 # write batch-level stats
-                if self.batch_count % batch_loss_every  == 0:
-                    #self.metrics_history.update('train/batch_loss', epoch, loss.item(), x=self.batch_count)
+                if batch_count % batch_loss_every  == 0:
                     if(self.writer):
-                        self.writer.add_scalar("train/batch_loss", loss.item(), self.batch_count)
+                        self.writer.add_scalar("train/batch_loss", loss, batch_count)
                 
                 # update batch count
-                self.batch_count += 1
-                self.new_epoch = False
+                batch_count += 1
+                epoch_loss += loss
+                n += 1
             
             epoch = epoch+1
             # compute metrics
             if (epoch % eval_every == 0) and (self.evaluator is not None):
                 metrics = {}
-                metrics['train'] = self.evaluator.getMetrics(dataset, mask=True, report_threshold=True)
+                metrics['train'] = self.evaluator.getMetrics(dataset, use_mask=True, report_threshold=True)
+                metrics['train']['loss'] = epoch_loss/n
                 
                 if(validation_dataset is not None):
-                    metrics['val'] = self.evaluator.getMetrics(validation_dataset, mask=True)
+                    metrics['val'] = self.evaluator.getMetrics(validation_dataset, use_mask=True)
                 
                 # report performance
                 if(not self.quiet):
                     reportMetrics(metrics,
                         label=('Epoch', epoch),
-                        header=self.first_epoch
+                        header=first_epoch
                     )
                 self.updateHistory(metrics, epoch)
-                self.first_epoch = False
+                first_epoch = False
             
             # checkpoint
             if checkpoint_every and (epoch % checkpoint_every == 0):
@@ -125,21 +154,22 @@ class Trainer(object):
                         'epoch': epoch
                         #'model_parameters': self.model.params() ## implement soon
                     }, fname)
-            
-            self.epoch += 1
+        
+        if debug:
+            return mem_stats
     
-    def optimizer_step(self, batch, y, mask=None, weight=True):
+    def optimizer_step(self, batch, y, mask=None, use_mask=True, weight=True):
         # decide how to weight classes
         if(weight):
-            weight = classWeights(y).to(self.model.device)
+            weight = classWeights(y).to(self.device)
         else:
             weight = None
         
         self.optimizer.zero_grad()
         output = self.model(batch)
         
-        # decide if we mask vertices
-        if(mask is not None):
+        # decide if we mask some vertices
+        if(use_mask):
             loss = self.criterion(output[mask], y[mask], weight=weight)
         else:
             loss = self.criterion(output, y, weight=weight)
@@ -148,24 +178,7 @@ class Trainer(object):
         loss.backward()
         self.optimizer.step()
         
-        return loss
-    
-    def scheduler_step(self, batch_loss, **kwargs):
-        # step per-batch learning rate schedulers if applicable
-        if self.scheduler is not None:
-            # per-batch schedules
-            if isinstance(self.scheduler, OneCycleLR):
-                self.scheduler.step()
-                return
-            
-            # per-epoch schedules
-            if self.new_epoch:
-                # we are in a new epoch, update per-epoch schedulers
-                if isinstance(self.scheduler, ReduceLROnPlateau):
-                    mean_loss = self.history['loss'][-1].mean()
-                    self.scheduler.step(mean_loss)
-                elif isinstance(self.scheduler, ExponentialLR):
-                    self.scheduler.step()
+        return loss.item()
     
     def updateHistory(self, metrics, epoch):
         for tag in metrics:

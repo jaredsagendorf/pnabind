@@ -9,25 +9,40 @@ arg_parser.add_argument("valid_file",
                 help="A list of validation data files.")
 arg_parser.add_argument("-c", "--config", dest="config_file", required=True,
                 help="A file storing configuration options.")
-arg_parser.add_argument("-p", "--write_test_predictions", action="store_true",
-                help="If set will write predictions over validation set to file after training is complete.")
-arg_parser.add_argument("-b", "--balance", type=str, default='balanced', choices=['balanced', 'non-masked', 'all'],
-                help="Decide which set of training labels to use.")
-arg_parser.add_argument("-d", "--debug", action="store_true",
-                help="Print additonal stuff to the logger.")
-arg_parser.add_argument("-T", "--no_tensorboard", action="store_true",
+# ouput options
+arg_parser.add_argument("--no_tensorboard", action="store_false", default=None, dest="tensorboard",
                 help="Do not write any output to a tensorboard file.")
-arg_parser.add_argument("-G", "--single_gpu", action="store_true",
-                help="Don't distribute across multiple GPUs even if available, just use one.")
-arg_parser.add_argument("-C", "--checkpoint_every", type=int, default=0,
-                help="How often to write a checkpoint file to disk. Default is once at end of training.")
-arg_parser.add_argument("-R", "--no_random", action="store_true",
-                help="Use a fixed random seed (useful for debugging).")
-arg_parser.add_argument("-W", "--no_write", action="store_true",
+arg_parser.add_argument("--no_write", action="store_false", default=None, dest="write",
                 help="Don't write anything to file and log everything to console.")
-ARGS = arg_parser.parse_args()
+arg_parser.add_argument("--write_test_predictions", action="store_true", default=None,
+                help="If set will write predictions over validation set to file after training is complete.")
+arg_parser.add_argument("--output_path", help="Directory to place output.")
 
-# standard packages
+# dataset options
+arg_parser.add_argument("--balance", type=str, choices=['balanced', 'non-masked', 'all'],
+                help="Decide which set of training labels to use.")
+arg_parser.add_argument("--no_shuffle", action="store_false", dest="shuffle", default=None,
+                help="Don't shuffle training data.")
+
+# training options
+arg_parser.add_argument("--checkpoint_every", type=int,
+                help="How often to write a checkpoint file to disk. Default is once at end of training.")
+arg_parser.add_argument("--eval_every", type=int,
+                help="How often to compute metrics over the training and validation data.")
+arg_parser.add_argument("--batch_size", type=int,
+                help="Size of the mini-batches.")
+arg_parser.add_argument("--epochs", type=int,
+                help="Number of epochs to train for.")
+
+# misc options
+arg_parser.add_argument("--single_gpu", action="store_true", default=None,
+                help="Don't distribute across multiple GPUs even if available, just use one.")
+arg_parser.add_argument("--no_random", action="store_true", default=None,
+                help="Use a fixed random seed (useful for debugging).")
+arg_parser.add_argument("--debug", action="store_true", default=None,
+                help="Print additonal debugging information.")
+
+# Standard packages
 import os
 import json
 import logging
@@ -35,44 +50,64 @@ import shutil
 from datetime import datetime
 from os.path import join as ospj
 
-# third party modules
+# Third party modules
 import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.nn import DataParallel
 from torch_geometric.data import DataLoader, DataListLoader
 
-# geobind modules
+# Geobind modules
 from geobind.nn.utils import ClassificationDatasetMemory
 from geobind.nn import Trainer, Evaluator
-from geobind.nn.models import NetConvEdgePool
+from geobind.nn.models import NetConvEdgePool, PointNetPP, MultiBranchNet
 from geobind.nn.metrics import reportMetrics
 
 ####################################################################################################
 
+# Load the config file
+defaults = {
+    "no_random": False,
+    "debug": False,
+    "output_path": ".",
+    "checkpoint_every": 0,
+    "tensorboard": True,
+    "write": True,
+    "write_test_predictions": True,
+    "single_gpu": False,
+    "balance": "balanced",
+    "shuffle": True,
+    "eval_every": 2
+}
+ARGS = arg_parser.parse_args()
+with open(ARGS.config_file) as FH:
+    C = json.load(FH)
+# add any missing default args
+for key, val in defaults.items():
+    if key not in C:
+        C[key] = val
+# override any explicit args
+for key, val in vars(ARGS).items():
+    if val is not None:
+        C[key] = val
+print(C)
+
 # Set random seed or not
-if ARGS.no_random or ARGS.debug:
+if C["no_random"] or C["debug"]:
     np.random.seed(8)
     torch.manual_seed(0)
 
-# Load the config file
-with open(ARGS.config_file) as FH:
-    C = json.load(FH)
-
 # Get run name and path
 config = '.'.join(ARGS.config_file.split('.')[:-1])
-run_name = "{}_{}".format(C.get("run_name", config), datetime.now().strftime("%m.%d.%Y.%H.%M"))
-run_path = ospj(C.get("output_path", "."), run_name)
-if(not (os.path.exists(run_path) or ARGS.no_write) ):
+run_name = "{}_{}_{}".format(C.get("run_name", config), datetime.now().strftime("%m.%d.%Y.%H.%M"), np.random.randint(1000))
+run_path = ospj(C["output_path"], run_name)
+if not os.path.exists(run_path) and C["write"]:
     os.makedirs(run_path)
 
 # Set up logging
-log_level = logging.DEBUG if ARGS.debug else logging.INFO
+log_level = logging.DEBUG if C["debug"] else logging.INFO
 log_format = '%(levelname)s:    %(message)s'
-if(ARGS.no_write):
-    filename = None
-    logging.basicConfig(format=log_format, filename=filename, level=log_level)
-else:
+if C["write"]:
     filename = ospj(run_path, 'run.log')
     logging.basicConfig(format=log_format, filename=filename, level=log_level)
     console = logging.StreamHandler()
@@ -80,27 +115,36 @@ else:
     formatter = logging.Formatter(log_format)
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
+else:
+    filename = None
+    logging.basicConfig(format=log_format, filename=filename, level=log_level)
 
 # Save copy of config to run directory
-if(not ARGS.no_write):
+if C["write"]:
     shutil.copyfile(ARGS.config_file, ospj(run_path, 'config.json'))
 
 # Set checkpoint values
-if(ARGS.checkpoint_every == 0 or ARGS.checkpoint_every > C["epochs"]):
-    ARGS.checkpoint_every = C['epochs'] # write once at end of training
-elif(ARGS.checkpoint_every < 0):
-    ARGS.checkpoint_every = False
+if(C["checkpoint_every"] == 0 or C["checkpoint_every"] > C["epochs"]):
+    C["checkpoint_every"] = C["epochs"] # write once at end of training
+elif(C["checkpoint_every"] < 0 or C["debug"]):
+    C["checkpoint_every"] = False
+
+# Create tensorboard writer
+if C["tensorboard"] and C["write"]:
+    writer = SummaryWriter(run_path)
+else:
+    writer = None
 
 ####################################################################################################
+### Load training/validation data ##################################################################
 
-# Load training/testing data
 train_data = [_.strip() for _ in open(ARGS.train_file).readlines()]
 valid_data = [_.strip() for _ in open(ARGS.valid_file).readlines()]
 
-remove_mask = (ARGS.balance == 'all')
+remove_mask = (C["balance"] == 'all')
 train_dataset = ClassificationDatasetMemory(
         train_data, C["nc"], C["data_dir"],
-        balance=ARGS.balance,
+        balance=C["balance"],
         remove_mask=remove_mask,
         scale=True
     )
@@ -113,21 +157,28 @@ valid_dataset = ClassificationDatasetMemory(
         scaler=train_dataset.scaler
     )
 
-if(torch.cuda.device_count() > 1 and (not ARGS.single_gpu)):
-    # prepare data for parallelization over multiple GPUs
-    DL_tr = DataListLoader(train_dataset, batch_size=C.get('batch_size', 1), shuffle=True, pin_memory=True)
-    DL_vl = DataListLoader(valid_dataset, batch_size=1, shuffle=False, pin_memory=True)
-else:
+if torch.cuda.device_count() <= 1 or C["single_gpu"]:
     # prepate data for single GPU or CPU 
-    DL_tr = DataLoader(train_dataset, batch_size=C.get('batch_size', 1), shuffle=True, pin_memory=True)
+    DL_tr = DataLoader(train_dataset, batch_size=C["batch_size"], shuffle=C["shuffle"], pin_memory=True)
     DL_vl = DataLoader(valid_dataset, batch_size=1, shuffle=False, pin_memory=True) 
+else:
+    # prepare data for parallelization over multiple GPUs
+    DL_tr = DataListLoader(train_dataset, batch_size=torch.cuda.device_count()*C["batch_size"], shuffle=C["shuffle"], pin_memory=True)
+    DL_vl = DataListLoader(valid_dataset, batch_size=1, shuffle=False, pin_memory=True)
+
+####################################################################################################
 
 # Create the model we'll be training.
 nF = train_dataset.num_node_features
 if C["model"]["name"] == "Net_Conv_EdgePool":
     model = NetConvEdgePool(nF, C['nc'], **C["model"]["kwargs"])
+elif C["model"]["name"] == "PointNetPP":
+    model = PointNetPP(nF, C['nc'], **C["model"]["kwargs"])
+elif C["model"]["name"] == "MultiBranchNet":
+    model = MultiBranchNet(nF, C['nc'], **C["model"]["kwargs"])
 
-# DEBUG: log model parameters
+
+# debugging: log model parameters
 logging.debug("Model Summary:")
 for name, param in model.named_parameters():
     if param.requires_grad:
@@ -135,15 +186,16 @@ for name, param in model.named_parameters():
 
 # Set up multiple GPU utilization
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-if(torch.cuda.device_count() > 1 and (not ARGS.single_gpu)):
+if torch.cuda.device_count() <= 1 or C["single_gpu"] or C["debug"]:
+    logging.info("Running model on device %s.", device)
+else:
     model = DataParallel(model)
     logging.info("Distributing model on %d gpus with root %s", torch.cuda.device_count(), device)
-else:
-    logging.info("Running model on device %s.", device)
 model = model.to(device)
-model.device = device
 
-# Set up optimizer, scheduler and loss
+####################################################################################################
+### Set up optimizer, scheduler and loss ###########################################################
+
 # optimizer
 if(C["optimizer"]["name"] == "adam"):
     optimizer = torch.optim.Adam(model.parameters(), **C["optimizer"]["kwargs"])
@@ -166,38 +218,46 @@ logging.info("configured learning rate scheduler: %s", C["scheduler"]["name"])
 # Loss function
 criterion = torch.nn.functional.cross_entropy
 
-# Create tensorboard writer
-if(not (ARGS.no_tensorboard or ARGS.no_write) ):
-    writer = SummaryWriter(run_path)
-else:
-    writer = None
-
 ####################################################################################################
+### Do the training ################################################################################
 
-# Do the training
-evaluator = Evaluator(model, post_process=torch.nn.Softmax(dim=-1))
-trainer = Trainer(model, optimizer, criterion, scheduler, evaluator,
+evaluator = Evaluator(model, device=device, post_process=torch.nn.Softmax(dim=-1))
+trainer = Trainer(model, optimizer, criterion, device, scheduler, evaluator,
     checkpoint_path=run_path,
     writer=writer,
     quiet=False
 )
-trainer.train(C["epochs"], DL_tr, DL_vl, checkpoint_every=ARGS.checkpoint_every)
+if C["debug"]:
+    stats = trainer.train(C["epochs"], DL_tr, DL_vl, checkpoint_every=C["checkpoint_every"], eval_every=C["eval_every"], debug=True)
+    logging.basicConfig(level=logging.INFO)
+    # plot
+    plt.plot(stats["current"], label='current')
+    plt.plot(stats["peak"], label='peak')
+    for x in stats["epoch_start"]:
+        plt.axvline(x, color='k')
+    plt.xlabel("iteration")
+    plt.ylabel("GPU Memory Usage (MB)")
+    plt.legend()
+    plt.savefig("{}_memusage.png".format(run_name))
+else:
+    trainer.train(C["epochs"], DL_tr, DL_vl, checkpoint_every=C["checkpoint_every"], eval_every=C["eval_every"], debug=False)
 
 # Write final training predictions to file
-if(not ARGS.no_write):
-    y_gt, prob = evaluator.eval(DL_tr, mask=False)
+if C["write"]:
+    y_gt, prob = evaluator.eval(DL_tr, use_mask=False)
     np.savez_compressed(ospj(run_path, "training_set_predictions.npz"), Y=y_gt, P=prob)
 
 ####################################################################################################
 
 # Evaluate validation dataset
-if(ARGS.write_test_predictions and (not ARGS.no_write)):
+if C["write_test_predictions"]:
     prediction_path = ospj(run_path, "predictions")
-    os.mkdir(prediction_path)
-    val_out = evaluator.eval(DL_vl, mask=False, batchwise=True, return_masks=True)
+    if not os.path.exists(prediction_path):
+        os.mkdir(prediction_path)
+    val_out = evaluator.eval(DL_vl, use_mask=False, batchwise=True, return_masks=True)
     lw = max([len(_)-len("_protein_data.npz") for _ in valid_data])
     use_header = True
-    threshold = trainer.metrics_history['train']['threshold'][-1]
+    threshold = trainer.metrics_history['train']['threshold'][-1] if "train" in trainer.metrics_history else 0.5
     
     for i, _ in enumerate(val_out):
         y, prob, mask = _
@@ -208,7 +268,7 @@ if(ARGS.write_test_predictions and (not ARGS.no_write)):
         reportMetrics({"validation predictions": metrics}, label=("Protein Identifier", name), label_width=lw, header=use_header)
         
         # write predictions to file
-        if(ARGS.write_test_predictions and (not ARGS.no_write)):
+        if C["write"]:
             y_pr = (prob[:,1] >= threshold)
             np.savez_compressed(ospj(prediction_path, "%s_predict.npz" % (name)), Ypr=y_pr, P=prob)
         use_header=False
