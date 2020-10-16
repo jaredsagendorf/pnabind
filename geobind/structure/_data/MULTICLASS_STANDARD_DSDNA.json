@@ -1,17 +1,17 @@
 {
-    "regexes": [
+    "residue_regexes": [
         {
-            "re": "DA|DC|DG|DT",
+            "residue_regex": "DA|DC|DG|DT",
             "group": "standard DNA backbone",
             "atom_regexes": [
                 {
-                    "re": "^P$|^OP1$|^OP2$|^OP3$|^C1'$|^C3'$|^O5'$|^O4'$|^C5'$|^C4'$|^C2'$|^O3",
+                    "atom_regex": "^P$|^OP1$|^OP2$|^OP3$|^C1'$|^C3'$|^O5'$|^O4'$|^C5'$|^C4'$|^C2'$|^O3",
                     "class": 3
                 }
             ]
         },
         {
-            "re": "DA",
+            "residue_regex": "DA",
             "group": "adenine",
             "atom_regexes": [
                 {
@@ -25,7 +25,7 @@
             ]
         },
         {
-            "re": "DC",
+            "residue_regex": "DC",
             "group": "cytosine",
             "atom_regexes": [
                 {
@@ -39,7 +39,7 @@
             ]
         },
         {
-            "re": "DG",
+            "residue_regex": "DG",
             "group": "guanine",
             "atom_regexes": [
                 {
@@ -53,7 +53,7 @@
             ]
         },
         {
-            "re": "DT",
+            "residue_regex": "DT",
             "group": "thymine",
             "atom_regexes": [
                 {

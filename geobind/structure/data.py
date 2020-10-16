@@ -138,10 +138,10 @@ class Data(object):
         
         ################################# Structure class datasets #################################
         self.label_sets = {}
-        with open(os.path.join(DATA_PATH, 'BINARY_LABELS_STANDARD_DNA.json')) as FILE:
-            self.label_sets["BINARY_LABELS_STANDARD_DNA"] = json.load(FILE)
+        with open(os.path.join(DATA_PATH, 'BINARY_STANDARD_DNA.json')) as FILE:
+            self.label_sets["BINARY_STANDARD_DNA"] = json.load(FILE)
         
-        with open(os.path.join(DATA_PATH, 'MULTICLASS_LABELS_STANDARD_DSDNA.json')) as FILE:
-            self.label_sets["MULTICLASS_LABELS_STANDARD_DSDNA"] = json.load(FILE)
+        with open(os.path.join(DATA_PATH, 'MULTICLASS_STANDARD_DSDNA.json')) as FILE:
+            self.label_sets["MULTICLASS_STANDARD_DSDNA"] = json.load(FILE)
 
 data = Data()

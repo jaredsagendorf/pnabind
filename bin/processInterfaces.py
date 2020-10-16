@@ -9,7 +9,7 @@ arg_parser.add_argument("-o", "--output_file", default="processed_files.dat",
                 help="Name of output file to write a list of datafiles which were generated.")
 arg_parser.add_argument("-c", "--config", dest="config_file", required=True,
                 help="A file storing configuration options in JSON format.")
-arg_parser.add_argument("-m", "--moieties", dest="moieties", required=True,
+arg_parser.add_argument("-m", "--moieties_file", dest="moieties_file",
                 help="A file in JSON format containing regexes which assign atoms to a class or the name of a built-in label set.")
 arg_parser.add_argument("-r", "--refresh", action='store_true', default=False,
                 help="recompute mesh even if present")
@@ -39,40 +39,25 @@ from scipy.sparse import save_npz
 
 # geobind modules
 import geobind
-from geobind import mapStructureFeaturesToMesh
+from geobind import mapStructureFeaturesToMesh, AtomToClassMapper
 from geobind.structure.data import data as D
 from geobind.structure import StructureData
 from geobind.structure import ResidueMutator
 from geobind.utils import Interpolator
 
-def chainType(chain, regexes):
-    ### make this a more general function
-    dna_count = 0.0
-    pro_count = 0.0
-    for residue in chain:
-        resname = residue.get_resname().strip()
-        if(regexes['PROTEIN']['STANDARD_RESIDUES'].search(resname)):
-            pro_count += 1.0
-        if(regexes['DNA']['STANDARD_NUCLEOTIDES'].search(resname)):
-            dna_count += 1.0
+def getEntities(structure, atom_mapper, regexes, mi=0):
+    """Docstring"""
+    pro = []
+    lig = []
+    for chain in structure[mi]:
+        for residue in chain:
+            resname = residue.get_resname()
+            if regexes['PROTEIN']['STANDARD_RESIDUES'].search(resname):
+                pro.append(residue.get_full_id())
+            elif atom_mapper.testResidue(residue):
+                lig.append(residue.get_full_id())
     
-    if(dna_count > pro_count):
-        return 'dna'
-    else:
-        return 'pro'
-
-def getEntities(structure, regexes, mi=0):
-    ### make this a more general function
-    pro = {mi:set()}
-    dna = {mi:set()}
-    for chain in structure[0]:
-        ctype = chainType(chain, regexes)
-        if(ctype == "dna"):
-            dna[mi].add(chain.get_id())
-        if(ctype == "pro"):
-            pro[mi].add(chain.get_id())
-    
-    return structure.slice(structure, pro, 'protein'), structure.slice(structure, dna, 'dna')
+    return structure.slice(structure, pro, 'protein'), structure.slice(structure, lig, 'ligand')
 
 def main():
     ### Load various data files ####################################################################
@@ -86,6 +71,16 @@ def main():
     else:
         standard_area = D.standard_sesa
     
+    # Create Atom Mapper object
+    if "MOIETIES" in C:
+        atom_mapper = AtomToClassMapper(C["MOIETIES"])
+    elif ARGS.moieties_file:
+        atom_mapper = AtomToClassMapper(ARGS.moieties_file)
+    elif "LIGAND_LIST" in C:
+        atom_mapper = AtomToClassMapper(C["LIGAND_LIST"], default=0)
+    elif "MOIETY_LABEL_SET_NAME" in C:
+        atom_mapper = AtomToClassMapper(C["MOIETY_LABEL_SET_NAME"])
+    
     ### Load the interface file which describes a list of DNA-protein interfaces to process ########
     listFile = ARGS.structures_file
     PROCESSED = open(ARGS.output_file, "w")
@@ -96,7 +91,9 @@ def main():
             continue
         protein_id = '.'.join(fileName.split('.')[0:-1]) + '_protein'
         structure = StructureData(fileName, name=protein_id, path=C["PDB_FILES_PATH"])
-        protein, dna = getEntities(structure, D.regexes)
+        protein, lig = getEntities(structure, atom_mapper, D.regexes)
+        protein.save()
+        lig.save()
         
         # Clean the protein entity
         protein, pqr = geobind.structure.cleanProtein(protein, res_mutator, hydrogens=C['HYDROGENS'])
@@ -199,8 +196,7 @@ def main():
         ### LABELS #############################################################################
         if(not ARGS.no_labels):
             # Compute labels
-            assert ARGS.moieties is not None
-            Y, class_map = geobind.assignMeshLabelsFromStructure(dna, mesh, ARGS.moieties, smooth=C["SMOOTH_LABELS"], mask=C["MASK_LABELS"])
+            Y, class_map = geobind.assignMeshLabelsFromStructure(lig, mesh, atom_mapper, smooth=C["SMOOTH_LABELS"], mask=C["MASK_LABELS"])
         
         ### OUTPUT #############################################################################
         # Write features to disk

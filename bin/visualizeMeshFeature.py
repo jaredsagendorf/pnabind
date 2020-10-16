@@ -7,6 +7,8 @@ PARSER.add_argument("data_file")
 PARSER.add_argument("extras_file", nargs='?')
 PARSER.add_argument("--color_map", dest='color_map', default='seismic',
         help="Name of a matplotlib color map.")
+PARSER.add_argument("--multiclass_labels", action='store_true',
+        help="Use multiclass coloring")
 PARSER.add_argument("--smooth", action='store_true',
         help="Turn on smooth shading")
 PARSER.add_argument("--point_cloud", action='store_true',
@@ -31,8 +33,18 @@ binary_colors = np.array([
 ])
 
 
-# geobind modules
-def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', max_width=4, shift_axis='x', **kwargs):
+# binary label colors
+multiclass_colors = np.array([
+    [1.00, 1.00, 1.00], # -1: masked
+    [0.55, 0.70, 0.40], #  0: non-binding site
+    [0.87, 0.63, 0.87], #  1: pink
+    [0.00, 1.00, 0.94], #  2: cyan
+    [1.00, 0.50, 0.00], #  3: orange
+    [1.00, 0.00, 0.00], #  4: red
+    [0.73, 0.33, 0.83], #  5: purple
+])
+
+def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, max_width=4, shift_axis='x', **kwargs):
     # figure out where to get color information
     if(data is None and colors is None):
         # just visualize the mesh geometry
@@ -42,7 +54,7 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', max_width=4
         vertex_colors = []
         for i in range(len(data)):
             if(data[i].dtype == np.int64 or data[i].dtype == np.bool):
-                vertex_colors.append(trimesh.visual.to_rgba(binary_colors[data[i]+1]))
+                vertex_colors.append(trimesh.visual.to_rgba(int_color_map[data[i]+1]))
             else:
                 vertex_colors.append(trimesh.visual.interpolate(data[i], color_map=color_map))
     else:
@@ -70,6 +82,24 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', max_width=4
     print("returning scene")
     return trimesh.Scene(scene).show(**kwargs)
 
+def getDataArrays(INP):
+    arrays = []
+    for inp in INP:
+        m = re.match("(w+)(d*)", inp)
+        
+        if inp in data:
+            arrays.append(data[inp])
+        elif inp[0] == 'X':
+            i = int(inp[1:])
+            arrays.append(data['X'][:,i])
+        elif inp in extras:
+            arrays.append(extras[inp])
+        elif inp[0] in extras:
+            i = int(inp[1:])
+            arrays.append(extras[inp[0]][:,i])
+    
+    return arrays
+
 # Read in data files
 data = np.load(ARGS.data_file)
 if ARGS.extras_file:
@@ -86,8 +116,9 @@ if "feature_names" in data:
     for i, feature in enumerate(data['feature_names']):
         feature_list += "X{:<2d}: {}\n".format(i, feature)
 else:
-    for i in range(data['X'].shape[1]):
-        feature_list += "X{:<2d}: X{:<2d}\n".format(i, i)
+    if 'X' in data:
+        for i in range(data['X'].shape[1]):
+            feature_list += "X{:<2d}: X{:<2d}\n".format(i, i)
 if 'Y' in data:
     feature_list += "Y: ground-truth labels\n"
 if ARGS.extras_file:
@@ -110,6 +141,7 @@ input_string = """
 Enter one of the following:
     l to list features
     m to visualize only the mesh
+    c to compare two data fields
     q to exit
     a list of data fields, separated by space (e.g. "X1 X2 Y")
 :""".strip()
@@ -137,6 +169,21 @@ while True:
         print(feature_list)
     elif(INP == 'm'):
         visualizeMesh(mesh)
+    elif(inp[0] == 'c'):
+        INP = INP.split()
+        arrays = getDataArrays(INP[1:])
+        
+        # masks where labels disagree
+        if ARGS.multiclass_labels:
+            pass
+        else:
+            D = arrays[0]
+            P = arrays[1]
+            m_np = (D == 0)*(D != P)
+            m_pn = (D == 1)*(D != P)
+            D[m_np] = 2
+            D[m_pn] = 3
+            visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors)
     #elif(INP in data or INP in extras):
         #if(INP in data):
             #D = data[INP]
@@ -146,28 +193,11 @@ while True:
         #visualizeMesh(mesh, colors=rgb)
     else:
         INP = INP.split()
-        arrays = []
-        for inp in INP:
-            m = re.match("(w+)(d*)", inp)
-            
-            if inp[0] == 'X':
-                i = int(inp[1:])
-                arrays.append(data['X'][:,i])
-            elif inp in data:
-                arrays.append(data[inp])
-            elif inp[0] in extras:
-                i = int(inp[1:])
-                arrays.append(extras[inp[0]][:,i])
-        visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth)
-        
-    #elif(inp.strip() == 'c'):
-        #pass
-        ##P = np.load(ARGS.compare_file)
-        ### masks where labels disagree
-        ##m_np = (D == 0)*(D != P)
-        ##m_pn = (D == 1)*(D != P)
-        ##D[m_np] = 2
-        ##D[m_pn] = 3
+        arrays = getDataArrays(INP)
+        if ARGS.multiclass_labels:
+            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors)
+        else:
+            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors)
     #else:
         #args = parser.parse_args(inp.split())
         #drange = [args.l, args.u]

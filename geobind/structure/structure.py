@@ -6,7 +6,8 @@ import logging
 from Bio.PDB import PDBParser, MMCIFParser, PDBIO
 from Bio.PDB.Entity import Entity
 from Bio.PDB.Structure import Structure
-from Bio.PDB.Model import Model #Chain, Residue, Atom
+from Bio.PDB.Model import Model
+from Bio.PDB.Chain import Chain
 import numpy as np
 
 # geobind modules
@@ -54,12 +55,29 @@ class StructureData(object):
         """Create a new Structure object 'S2' from a slice of the current one, 'S1'. <selection> 
         defines which  descendents 'S1' will be stored in 'S2'."""
         
-        ### ONLY SUPPORTS SLICING UP TO MODEL->CHAIN LEVEL
         ent = Structure(name) # Biopython structure object
-        for mid in selection:
+        # Loop over selection and determine what model/chain objects we need to create in order to
+        # store the slice
+        models = {}
+        for item in selection:
+            mid = item[1]
+            cid = item[2]
+            if mid not in models:
+                models[mid] = set() # store chain ids
+            models[mid].add(cid)
+        
+        # Create model/chains to store slice
+        for mid in models:
             ent.add(Model(mid))
-            for cid in selection[mid]:
-                ent[mid].add(obj[mid][cid])
+            for cid in models[mid]:
+                ent[mid].add(Chain(cid))
+        
+        # Add residues to slice
+        for item in selection:
+            mid = item[1]
+            cid = item[2]
+            rid = item[3]
+            ent[mid][cid].add(obj[mid][cid][rid])
         
         return cls(ent, name=name)
     

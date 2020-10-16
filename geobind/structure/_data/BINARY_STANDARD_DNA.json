@@ -1,11 +1,11 @@
 {
-    "regexes": [
+    "residue_regexes": [
         {
-            "re": "DA|DC|DG|DT",
+            "residue_regex": "DA|DC|DG|DT",
             "group": "standard DNA",
             "atom_regexes": [
                 {
-                    "re": ".*",
+                    "atom_regex": ".*",
                     "class": 1
                 }
             ]
