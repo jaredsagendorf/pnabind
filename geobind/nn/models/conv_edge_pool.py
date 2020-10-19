@@ -92,7 +92,8 @@ class NetConvEdgePool(torch.nn.Module):
         # set size of every layer
         num_lin = 4 # 1 + 3
         if isinstance(nhidden, int):
-            nhidden = [nhidden]*(num_top_convs + depth + num_bottom_convs + depth + num_lin)
+            nhidden = [nhidden]*(self.num_top_convs + self.depth + self.num_bottom_convs + self.depth + num_lin)
+        assert len(nhidden) ==  (self.num_top_convs + self.depth + self.num_bottom_convs + self.depth + num_lin)
         
         # down FC layer (dimentionality reduction)
         self.lin1 = nn.Linear(nIn, nhidden[0])
