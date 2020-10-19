@@ -19,7 +19,7 @@ arg_parser.add_argument("--write_test_predictions", action="store_true", default
 arg_parser.add_argument("--output_path", help="Directory to place output.")
 
 # dataset options
-arg_parser.add_argument("--balance", type=str, choices=['balanced', 'non-masked', 'all'],
+arg_parser.add_argument("--balance", type=str, choices=['balanced', 'unmasked', 'all'], default='unmasked',
                 help="Decide which set of training labels to use.")
 arg_parser.add_argument("--no_shuffle", action="store_false", dest="shuffle", default=None,
                 help="Don't shuffle training data.")
@@ -33,6 +33,8 @@ arg_parser.add_argument("--batch_size", type=int,
                 help="Size of the mini-batches.")
 arg_parser.add_argument("--epochs", type=int,
                 help="Number of epochs to train for.")
+arg_parser.add_argument("--weight_method", type=str, choices=['none', 'batch', 'dataset'], default='batch',
+                help="How to weight each class when training on dataset.")
 
 # misc options
 arg_parser.add_argument("--single_gpu", action="store_true", default=None,
@@ -58,7 +60,7 @@ from torch_geometric.nn import DataParallel
 from torch_geometric.data import DataLoader, DataListLoader
 
 # Geobind modules
-from geobind.nn.utils import ClassificationDatasetMemory
+from geobind.nn.utils import ClassificationDatasetMemory, classWeights
 from geobind.nn import Trainer, Evaluator
 from geobind.nn.models import NetConvEdgePool, PointNetPP, MultiBranchNet
 from geobind.nn.metrics import reportMetrics
@@ -75,9 +77,10 @@ defaults = {
     "write": True,
     "write_test_predictions": True,
     "single_gpu": False,
-    "balance": "balanced",
+    "balance": "unmasked",
     "shuffle": True,
-    "eval_every": 2
+    "eval_every": 2,
+    "weight_method": "batch"
 }
 ARGS = arg_parser.parse_args()
 with open(ARGS.config_file) as FH:
@@ -157,7 +160,7 @@ valid_dataset = ClassificationDatasetMemory(
         scaler=train_dataset.scaler
     )
 
-if torch.cuda.device_count() <= 1 or C["single_gpu"]:
+if torch.cuda.device_count() <= 1 or C["single_gpu"] or C["debug"]:
     # prepate data for single GPU or CPU 
     DL_tr = DataLoader(train_dataset, batch_size=C["batch_size"], shuffle=C["shuffle"], pin_memory=True)
     DL_vl = DataLoader(valid_dataset, batch_size=1, shuffle=False, pin_memory=True) 
@@ -221,14 +224,37 @@ criterion = torch.nn.functional.cross_entropy
 ####################################################################################################
 ### Do the training ################################################################################
 
-evaluator = Evaluator(model, device=device, post_process=torch.nn.Softmax(dim=-1))
-trainer = Trainer(model, optimizer, criterion, device, scheduler, evaluator,
+evaluator = Evaluator(model, C["nc"], device=device, post_process=torch.nn.Softmax(dim=-1))
+trainer = Trainer(model, C["nc"], optimizer, criterion, device, scheduler, evaluator,
     checkpoint_path=run_path,
     writer=writer,
     quiet=False
 )
+
+# determine how to weight classes
+if C["weight_method"] == 'dataset':
+    opt_kw = {
+        "weight": classWeights(DL_tr, C["nc"], device),
+        "use_weight": True
+    }
+elif C["weight_method"] == 'batch':
+    opt_kw = {
+        "weight": None,
+        "use_weight": True
+    }
+else:
+    opt_kw = {
+        "use_weight": False
+    }
+
+# train
 if C["debug"]:
-    stats = trainer.train(C["epochs"], DL_tr, DL_vl, checkpoint_every=C["checkpoint_every"], eval_every=C["eval_every"], debug=True)
+    stats = trainer.train(C["epochs"], DL_tr, DL_vl,
+        checkpoint_every=C["checkpoint_every"],
+        eval_every=C["eval_every"],
+        optimizer_kwargs=opt_kw,
+        debug=True
+    )
     logging.basicConfig(level=logging.INFO)
     # plot
     plt.plot(stats["current"], label='current')
@@ -240,12 +266,17 @@ if C["debug"]:
     plt.legend()
     plt.savefig("{}_memusage.png".format(run_name))
 else:
-    trainer.train(C["epochs"], DL_tr, DL_vl, checkpoint_every=C["checkpoint_every"], eval_every=C["eval_every"], debug=False)
+    trainer.train(C["epochs"], DL_tr, DL_vl,
+        checkpoint_every=C["checkpoint_every"],
+        eval_every=C["eval_every"],
+        optimizer_kwargs=opt_kw,
+        debug=False
+    )
 
 # Write final training predictions to file
 if C["write"]:
-    y_gt, prob = evaluator.eval(DL_tr, use_mask=False)
-    np.savez_compressed(ospj(run_path, "training_set_predictions.npz"), Y=y_gt, P=prob)
+    train_out = evaluator.eval(DL_tr, use_mask=False)
+    np.savez_compressed(ospj(run_path, "training_set_predictions.npz"), Y=train_out['y'], P=train_out['output'])
 
 ####################################################################################################
 
@@ -254,21 +285,21 @@ if C["write_test_predictions"]:
     prediction_path = ospj(run_path, "predictions")
     if not os.path.exists(prediction_path):
         os.mkdir(prediction_path)
-    val_out = evaluator.eval(DL_vl, use_mask=False, batchwise=True, return_masks=True)
-    lw = max([len(_)-len("_protein_data.npz") for _ in valid_data])
+    lw = max([len(_)-len("_protein_data.npz") for _ in valid_data] + [len("Protein Identifier")])
     use_header = True
-    threshold = trainer.metrics_history['train']['threshold'][-1] if "train" in trainer.metrics_history else 0.5
+    history = trainer.metrics_history
+    threshold = trainer.metrics_history['train']['threshold'][-1] if ("train" in history and "threshold" in history["train"]) else 0.5
     
-    for i, _ in enumerate(val_out):
-        y, prob, mask = _
+    val_out = evaluator.eval(DL_vl, use_mask=False, batchwise=True, return_masks=True, return_predicted=True)
+    for i in range(val_out['num_batches']):
         name = valid_data[i].replace("_protein_data.npz", "")
         
         # compute metrics
+        y, prob, mask = val_out['y'][i], val_out['output'][i], val_out['masks'][i]
         metrics = evaluator.getMetrics(y[mask], prob[mask], threshold=threshold)
         reportMetrics({"validation predictions": metrics}, label=("Protein Identifier", name), label_width=lw, header=use_header)
         
         # write predictions to file
         if C["write"]:
-            y_pr = (prob[:,1] >= threshold)
-            np.savez_compressed(ospj(prediction_path, "%s_predict.npz" % (name)), Ypr=y_pr, P=prob)
+            np.savez_compressed(ospj(prediction_path, "%s_predict.npz" % (name)), Ypr=val_out['predicted_y'][i], P=prob)
         use_header=False

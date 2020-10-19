@@ -23,36 +23,42 @@ def registerMetric(name, fn):
     METRICS_FN[name] = fn
 
 class Evaluator(object):
-    def __init__(self, model, device="cpu", metrics=None, model_type='binary', post_process=None):
-        ##TO DO - ADD METRICS AND KWARGS BASED ON MODEL TYPE
+    def __init__(self, model, nc, device="cpu", metrics=None, post_process=None):
         self.model = model # must implement the 'forward' method
         self.device = device
         
-        if(post_process is None):
+        if post_process is None:
             # identity function
             post_process = lambda x: x
         self.post = post_process
         
-        self.model_type = model_type
-        
         # decide what metrics to use
-        if(metrics == 'none'):
+        self.nc = nc
+        if metrics == 'none':
             self.metrics = None
-        elif(metrics is None):
-            if(model_type == 'binary'):
+        elif metrics is None:
+            if nc == 2:
                 # binary classifier
                 metrics={
-                    'auroc': {},
-                    'auprc': {},
+                    'auroc': {'average': 'binary'},
+                    'auprc': {'average': 'binary'},
                     'balanced_accuracy': {},
                     'mean_iou': {'average': 'weighted'},
-                    'precision': {'average': 'binary'},
-                    'recall': {'average': 'binary'},
+                    'precision': {'average': 'binary', 'zero_division': 0},
+                    'recall': {'average': 'binary', 'zero_division': 0},
                     'accuracy': {}
                 }
-            elif(model_type == 'multiclass'):
-                # TODO - three or more classes 
-                pass
+            elif nc > 2:
+                # three or more classes 
+                metrics={
+                    'auroc': {'average': 'weighted'},
+                    'auprc': {'average': 'weighted'},
+                    'balanced_accuracy': {},
+                    'mean_iou': {'average': 'weighted'},
+                    'precision': {'average': 'weighted', 'zero_division': 0},
+                    'recall': {'average': 'weighted', 'zero_division': 0},
+                    'accuracy': {}
+                }
             else:
                 # TODO - assume regression
                 pass
@@ -63,70 +69,90 @@ class Evaluator(object):
             self.metrics = metrics
     
     @torch.no_grad()
-    def eval(self, dataset, batchwise=False, use_mask=True, return_masks=False):
+    def eval(self, dataset, batchwise=False, use_mask=True, return_masks=False, return_predicted=False, **kwargs):
         """Returns numpy arrays!!!"""
         self.model.eval()
         
         # evaluate model on given dataset
         y_gts = []
-        outs = []
+        y_prs = []
+        outps = []
         masks = []
         for batch in dataset:
             batch, y, mask = processBatch(self.device, batch)
             output = self.model(batch)
-            if(use_mask):
-                y = y[mask]
-                out = self.post(output[mask])
+            if use_mask:
+                y = y[mask].cpu().numpy()
+                out = self.post(output[mask]).cpu().numpy()
             else:
-                out = self.post(output)
+                y = y.cpu().numpy()
+                out = self.post(output).cpu().numpy()
             
-            y_gts.append(y.cpu().numpy())
-            outs.append(out.cpu().numpy())
-            if(return_masks):
+            y_gts.append(y)
+            outps.append(out)
+            if return_masks:
                 masks.append(mask.cpu().numpy())
+            
+            if return_predicted:
+                y_prs.append(self.predictClass(out, **kwargs))
         
         # decide what to do with each data item
-        if(batchwise):
-            # return per-batch output
-            if(return_masks):
-                return zip(y_gts, outs, masks)
-            else:
-                zip(y_gts, outs)
+        data_items = {
+            'y': y_gts,
+            'output': outps
+        }
+        if return_masks:
+            data_items['masks'] = masks
+        if return_predicted:
+            data_items['predicted_y'] = y_prs
+        
+        # concat batches if not batchwise
+        if batchwise:
+            data_items['num_batches'] = len(y_gts)
         else:
-            # concatenate entire dataset
-            if(return_masks):
-                return np.concatenate(y_gts, axis=0), np.concatenate(outs, axis=0), np.concatenate(masks, axis=0)
-            else:
-                return np.concatenate(y_gts, axis=0), np.concatenate(outs, axis=0)
+            for item in data_items:
+                data_items[item] = np.concatenate(data_items[item], axis=0)
+            data_items['num'] = len(data_items['y'])
+        
+        return data_items
     
     def getMetrics(self, *args, threshold=None, threshold_metric='balanced_accuracy', report_threshold=False, **kwargs):
         if(self.metrics is None):
             return {}
-        ## TODO: generalize to handle multi-class, regression
+        metric_values = {}
         
         # Determine what we were given (a dataset or labels/predictions)
-        if(len(args) == 1):
-            y_gt, outs = self.eval(args[0], **kwargs)
+        if len(args) == 1:
+            evald = self.eval(args[0], **kwargs)
+            y_gt = evald['y']
+            outs = evald['output']
         else:
             y_gt, outs = args
         
-        # Compute metrics
-        metric_values = {}
-        if(self.model_type == 'binary'):
-            if(threshold is None):
-                # sample n_samples threshold values
-                threshold, _  = chooseBinaryThreshold(y_gt, outs[:,1], metric_fn=METRICS_FN[threshold_metric], **self.metrics[threshold_metric])
-            y_pr = (outs[:,1] >= threshold)
-            if(report_threshold):
-                metric_values['threshold'] = threshold
-        elif(self.model_type == 'multiclass'):
-            y_pr = np.argmax(outs, axis=1)
+        # Get predicted class labels
+        y_pr = self.predictClass(outs, threshold=threshold, threshold_metric=threshold_metric, report_threshold=report_threshold)
         
+        # Compute metrics
         for metric, kw in self.metrics.items():
             if(metric in ['auprc', 'auroc']):
                 # AUC metrics
-                metric_values[metric] = METRICS_FN[metric](y_gt, outs, **kw)
+                pass
+                #metric_values[metric] = METRICS_FN[metric](y_gt, outs, **kw)
             else:
                 metric_values[metric] = METRICS_FN[metric](y_gt, y_pr, **kw)
         
         return metric_values
+    
+    def predictClass(self, outs, threshold=None, threshold_metric='balanced_accuracy', report_threshold=False):
+        # Decide how to determine `y_pr` from `outs`
+        if self.nc == 2:
+            if threshold is None:
+                # sample n_samples threshold values
+                threshold, _  = chooseBinaryThreshold(y_gt, outs[:,1], metric_fn=METRICS_FN[threshold_metric], **self.metrics[threshold_metric])
+            y_pr = (outs[:,1] >= threshold)
+            if report_threshold:
+                metric_values['threshold'] = threshold
+        elif self.nc > 2:
+            y_pr = np.argmax(outs, axis=1).flatten()
+        
+        return y_pr

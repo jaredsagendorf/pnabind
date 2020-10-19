@@ -35,7 +35,7 @@ class NetConvEdgePool(torch.nn.Module):
         self.use_skips = use_skips
         self.sum_skips = sum_skips
         self.num_top_convs = num_top_convs
-        self.num_bottom_convs = num_bottom_convs
+        self.num_bottom_convs = num_bottom_convs*(depth > 0)
         self.edge_dim = edge_dim
         self.smoothing = smoothing
         self.name = name
@@ -110,24 +110,26 @@ class NetConvEdgePool(torch.nn.Module):
             self.down_pools.append(self.makePool(nhidden[i+1], **pool_args))
         
         # bottom convolutions
-        for i in range(num_top_convs + depth, num_top_convs + depth + num_bottom_convs):
-            self.bottom_convs.append(self.makeConv(nhidden[i], nhidden[i+1], conv_args))
+        if depth > 0:
+            for i in range(num_top_convs + depth, num_top_convs + depth + num_bottom_convs):
+                self.bottom_convs.append(self.makeConv(nhidden[i], nhidden[i+1], conv_args))
         
         # up layers
-        offset = 2*num_top_convs + 2*depth + num_bottom_convs# - 1
-        for i in range(num_top_convs + depth + num_bottom_convs, num_top_convs + depth + num_bottom_convs + depth):
-            if self.use_skips:
-                j = offset - i
-                if sum_skips and nhidden[i] == nhidden[j]:
+        if depth > 0:
+            offset = 2*num_top_convs + 2*depth + num_bottom_convs
+            for i in range(num_top_convs + depth + num_bottom_convs, num_top_convs + depth + num_bottom_convs + depth):
+                if self.use_skips:
+                    j = offset - i
+                    if sum_skips and nhidden[i] == nhidden[j]:
+                        in_channels = nhidden[i]
+                        out_channels = nhidden[i+1]
+                    else:
+                        in_channels = nhidden[i] + nhidden[j]
+                        out_channels = nhidden[i+1]
+                else:
                     in_channels = nhidden[i]
                     out_channels = nhidden[i+1]
-                else:
-                    in_channels = nhidden[i] + nhidden[j]
-                    out_channels = nhidden[i+1]
-            else:
-                in_channels = nhidden[i]
-                out_channels = nhidden[i+1]
-            self.up_convs.append(self.makeConv(in_channels, out_channels, conv_args))
+                self.up_convs.append(self.makeConv(in_channels, out_channels, conv_args))
         
         if lin:
             # up FC layers
@@ -289,13 +291,9 @@ class NetConvEdgePool(torch.nn.Module):
                 skip_connections.append(x)
             
             # pooling 
-            #x, edge_index, batch, unpool = self.down_pools[i](x, graph_activations[i].edge_index, graph_activations[i].batch)
             args = self.getPoolArgs(x, graph_activations[i])
             x, edge_index, batch, unpool = self.down_pools[i](*args)
             data_pooled = self.getpooledMesh(graph_activations[i], unpool, x, edge_index, batch)
-            #if(debug):
-                #np.save("pooling/pos{}.npy".format(i), data_pooled.pos)
-                #np.save("pooling/face{}.npy".format(i), data_pooled.face)
             graph_activations.append(data_pooled)
         
         # bottom convs

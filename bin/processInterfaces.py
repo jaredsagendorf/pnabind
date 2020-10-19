@@ -196,7 +196,12 @@ def main():
         ### LABELS #############################################################################
         if(not ARGS.no_labels):
             # Compute labels
-            Y, class_map = geobind.assignMeshLabelsFromStructure(lig, mesh, atom_mapper, smooth=C["SMOOTH_LABELS"], mask=C["MASK_LABELS"])
+            Y, class_map = geobind.assignMeshLabelsFromStructure(lig, mesh, atom_mapper,
+                smooth=C["SMOOTH_LABELS"],
+                mask=C["MASK_LABELS"],
+                distance_cutoff=C["MESH_DISTANCE_CUTOFF"],
+                mask_cutoff=C.get("MASK_DISTANCE_CUTOFF", 0)
+            )
         
         ### OUTPUT #############################################################################
         # Write features to disk

@@ -42,6 +42,7 @@ multiclass_colors = np.array([
     [1.00, 0.50, 0.00], #  3: orange
     [1.00, 0.00, 0.00], #  4: red
     [0.73, 0.33, 0.83], #  5: purple
+    [51/255, 51/255, 1.0] # 6: blue
 ])
 
 def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, max_width=4, shift_axis='x', **kwargs):

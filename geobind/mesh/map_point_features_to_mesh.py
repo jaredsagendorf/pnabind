@@ -22,7 +22,7 @@ def wfn(dist, cutoff, offset=0, weight_method='inverse_distance', minw=0.5, maxw
         raise ValueError("Unknown value of argument `weight_method`: {}".format(weight_method))
     
 
-def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=None, map_to='neighborhood', weight_method='inverse_distance', **kwargs):
+def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=None, map_to='neighborhood', weight_method='inverse_distance', clip_values=False, **kwargs):
     
     X = np.zeros((mesh.num_vertices, features.shape[1])) # store the mapped features
     W = np.zeros(mesh.num_vertices) # weights determined by distance from points to vertices

@@ -234,9 +234,11 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
         # mask the boundaries of any binding region
         Yn = np.argwhere(Y == 0).flatten()
         Yb = np.argwhere(Y != 0).flatten()
-        Kn = cKDTree(mesh.vertices[Yn])
-        ind = [i for j in Kn.query_ball_point(mesh.vertices[Yb], mask_cutoff) for i in j]
-        Y[Yn[ind]] = -1
+        if len(Yb) > 0:
+            Kn = cKDTree(mesh.vertices[Yn])
+            query = Kn.query_ball_point(mesh.vertices[Yb], mask_cutoff) # all non-bs vertices within `mask_cutoff` of bs vertices
+            ind = [i for j in query for i in j] # need to flatten this list of lists
+            Y[Yn[ind]] = -1
     
     return Y, atom_mapper
 

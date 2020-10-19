@@ -98,7 +98,7 @@ class ClassificationDatasetMemory(InMemoryDataset):
             
             if self.balance == 'balanced':
                 idxb = balancedClassIndices(data_arrays['Y'], range(self.nc), max_percentage=self.percentage)
-            elif self.balance == 'non-masked':
+            elif self.balance == 'unmasked':
                 idxb = (data_arrays['Y'] >= 0)
             elif self.balance == 'all':
                 idxb = (data_arrays['Y'] == data_arrays['Y'])

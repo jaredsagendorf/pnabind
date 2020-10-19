@@ -43,9 +43,10 @@ class Scheduler(object):
             self.history["batch_count"] += 1
 
 class Trainer(object):
-    def __init__(self, model, optimizer, criterion, device='cpu', scheduler=None, evaluator=None, writer=None, checkpoint_path='.', quiet=True):
+    def __init__(self, model, nc, optimizer, criterion, device='cpu', scheduler=None, evaluator=None, writer=None, checkpoint_path='.', quiet=True):
         # parameters
         self.model = model
+        self.nc = nc
         self.optimizer = optimizer
         self.criterion = criterion
         self.evaluator = evaluator
@@ -101,8 +102,9 @@ class Trainer(object):
                 # check for OOM errors
                 try:
                     loss = self.optimizer_step(batch, y, mask, **optimizer_kwargs)
-                except RuntimeError: # out of memory
-                    logging.info("Ran out of memory -- skipping batch.")
+                except RuntimeError as e: # out of memory
+                    logging.info("Runtime error -- skipping batch.")
+                    logging.debug("Error at loss computation.", exc_info=e)
                     oom = True
                 if oom:
                     continue
@@ -158,18 +160,18 @@ class Trainer(object):
         if debug:
             return mem_stats
     
-    def optimizer_step(self, batch, y, mask=None, use_mask=True, weight=True):
+    def optimizer_step(self, batch, y, mask=None, use_mask=True, use_weight=True, weight=None):
         # decide how to weight classes
-        if(weight):
-            weight = classWeights(y).to(self.device)
-        else:
+        if use_weight and weight is None:
+            weight = classWeights(y, self.nc, device=self.device)
+        elif not use_weight:
             weight = None
         
         self.optimizer.zero_grad()
         output = self.model(batch)
         
         # decide if we mask some vertices
-        if(use_mask):
+        if use_mask:
             loss = self.criterion(output[mask], y[mask], weight=weight)
         else:
             loss = self.criterion(output, y, weight=weight)
