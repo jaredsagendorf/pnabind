@@ -120,8 +120,13 @@ else:
     if 'X' in data:
         for i in range(data['X'].shape[1]):
             feature_list += "X{:<2d}: X{:<2d}\n".format(i, i)
+    if 'P' in data:
+        for i in range(data['P'].shape[1]):
+            feature_list += "P{:<2d}: P{:<2d}\n".format(i, i)
 if 'Y' in data:
     feature_list += "Y: ground-truth labels\n"
+if 'Ypr' in data:
+    feature_list += "Ypr: predicted labels\n"
 if ARGS.extras_file:
     for key in extras:
         if extras[key].ndim > 1:

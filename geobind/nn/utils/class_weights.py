@@ -12,7 +12,8 @@ def classWeights(data, nc, device='cpu', use_mask=True):
         # a dataloader object
         ys = []
         for batch in data:
-            batch, y, mask = processBatch(device, batch)
+            batch_data = processBatch(device, batch)
+            y, mask = batch_data['y'], batch_data['mask'] 
             if use_mask :
                 y = y[mask]
             ys.append(y)

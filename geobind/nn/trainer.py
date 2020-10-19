@@ -97,7 +97,8 @@ class Trainer(object):
             for batch in dataset:
                 oom = False
                 # update the model weights
-                batch, y, mask = processBatch(self.device, batch)
+                batch_data = processBatch(self.device, batch)
+                batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['mask']
                 
                 # check for OOM errors
                 try:

@@ -290,7 +290,7 @@ if C["write_test_predictions"]:
     history = trainer.metrics_history
     threshold = trainer.metrics_history['train']['threshold'][-1] if ("train" in history and "threshold" in history["train"]) else 0.5
     
-    val_out = evaluator.eval(DL_vl, use_mask=False, batchwise=True, return_masks=True, return_predicted=True)
+    val_out = evaluator.eval(DL_vl, use_mask=False, batchwise=True, return_masks=True, return_predicted=True, xtras=['pos', 'face'])
     for i in range(val_out['num_batches']):
         name = valid_data[i].replace("_protein_data.npz", "")
         
@@ -301,5 +301,5 @@ if C["write_test_predictions"]:
         
         # write predictions to file
         if C["write"]:
-            np.savez_compressed(ospj(prediction_path, "%s_predict.npz" % (name)), Ypr=val_out['predicted_y'][i], P=prob)
+            np.savez_compressed(ospj(prediction_path, "%s_predict.npz" % (name)), Y=y, Ypr=val_out['predicted_y'][i], P=prob, V=val_out['pos'][i], F=val_out['face'][i].T)
         use_header=False

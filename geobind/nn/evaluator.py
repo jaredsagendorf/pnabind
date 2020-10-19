@@ -69,17 +69,25 @@ class Evaluator(object):
             self.metrics = metrics
     
     @torch.no_grad()
-    def eval(self, dataset, batchwise=False, use_mask=True, return_masks=False, return_predicted=False, **kwargs):
+    def eval(self, dataset, batchwise=False, use_mask=True, return_masks=False, return_predicted=False, xtras=None, **kwargs):
         """Returns numpy arrays!!!"""
         self.model.eval()
         
         # evaluate model on given dataset
+        data_items = {}
         y_gts = []
         y_prs = []
         outps = []
         masks = []
+        if xtras is not None:
+            # these items will not be masked even if `use_mask == True`
+            for item in xtras:
+                data_items[item] = []
+        
+        # loop over dataset
         for batch in dataset:
-            batch, y, mask = processBatch(self.device, batch)
+            batch_data = processBatch(self.device, batch, xtras=xtras)
+            batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['mask']
             output = self.model(batch)
             if use_mask:
                 y = y[mask].cpu().numpy()
@@ -95,12 +103,15 @@ class Evaluator(object):
             
             if return_predicted:
                 y_prs.append(self.predictClass(out, **kwargs))
+            
+            if xtras is not None:
+                # these items will not be masked even if `use_mask == True`
+                for item in xtras:
+                    data_items[item].append(batch_data[item].cpu().numpy())
         
         # decide what to do with each data item
-        data_items = {
-            'y': y_gts,
-            'output': outps
-        }
+        data_items['y'] = y_gts
+        data_items['output'] = outps
         if return_masks:
             data_items['masks'] = masks
         if return_predicted:
