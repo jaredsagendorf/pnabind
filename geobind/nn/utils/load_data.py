@@ -72,8 +72,16 @@ class ClassificationDatasetMemory(InMemoryDataset):
     @property
     def processed_file_names(self):
         m = hashlib.md5()
-        files= "".join(sorted(self.data_files))
-        m.update(files.encode('utf-8'))
+        args = [
+            nc,
+            self.balance,
+            self.percentage,
+            self.remove_mask,
+            self.unmasked_class,
+            self.scale
+        ]
+        args = "".join([str(_) for _ in args] + list(sorted(self.data_files)))
+        m.update(args.encode('utf-8'))
         self.hash_name = m.hexdigest()
         return ['{}.pt'.format(self.hash_name), '{}_scaler.pkl'.format(self.hash_name)]
     

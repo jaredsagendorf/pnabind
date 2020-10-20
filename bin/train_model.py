@@ -154,7 +154,7 @@ train_dataset = ClassificationDatasetMemory(
 
 valid_dataset = ClassificationDatasetMemory(
         valid_data, C["nc"], C["data_dir"],
-        balance='non-masked',
+        balance='unmasked',
         remove_mask=False,
         scale=True,
         scaler=train_dataset.scaler
