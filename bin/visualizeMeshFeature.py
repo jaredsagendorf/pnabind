@@ -40,9 +40,10 @@ multiclass_colors = np.array([
     [0.87, 0.63, 0.87], #  1: pink
     [0.00, 1.00, 0.94], #  2: cyan
     [1.00, 0.50, 0.00], #  3: orange
-    [1.00, 0.00, 0.00], #  4: red
+    [1.00, 1.00, 0.00], #  4: yellow
     [0.73, 0.33, 0.83], #  5: purple
-    [51/255, 51/255, 1.0] # 6: blue
+    [51/255, 51/255, 1.0], # 6: blue
+    [1.00, 0.00, 0.00] # 7: red (false prediction)
 ])
 
 def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, max_width=4, shift_axis='x', **kwargs):
@@ -181,7 +182,11 @@ while True:
         
         # masks where labels disagree
         if ARGS.multiclass_labels:
-            pass
+            D = arrays[0]
+            P = arrays[1]
+            ind = (D != P)
+            D[ind] = 7
+            visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors)
         else:
             D = arrays[0]
             P = arrays[1]
@@ -190,13 +195,6 @@ while True:
             D[m_np] = 2
             D[m_pn] = 3
             visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors)
-    #elif(INP in data or INP in extras):
-        #if(INP in data):
-            #D = data[INP]
-        #else:
-            #D = extras[INP]
-        #rgb = trimesh.visual.to_rgba(colors[D+1])
-        #visualizeMesh(mesh, colors=rgb)
     else:
         INP = INP.split()
         arrays = getDataArrays(INP)
@@ -204,12 +202,3 @@ while True:
             visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors)
         else:
             visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors)
-    #else:
-        #args = parser.parse_args(inp.split())
-        #drange = [args.l, args.u]
-        #for x in args.x:
-            ## check x is in range
-            #if(x >= size or x < 0):
-                #raise IndexError("{} is out of range [{}, {}]".format(x, 0, size-1))
-            #print("Min: {:<.4f} Max: {:<.4f} Avg: {:<.4f} Std: {:<.4f}".format(data['X'][:,x].min(), data['X'][:,x].max(), data['X'][:,x].mean(), data['X'][:,x].std()))
-        #visualizeMesh(mesh, data['X'][:, args.x], color_map=ARGS.color_map)
