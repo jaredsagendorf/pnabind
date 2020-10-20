@@ -4,8 +4,8 @@ import numpy as np
 
 # geobind modules
 from geobind.nn import processBatch
-from geobind.nn.metrics import auroc, auprc, balanced_accuracy_score, recall_score
-from geobind.nn.metrics import precision_score, jaccard_score, f1_score, accuracy_score
+from geobind.nn.metrics import auroc, auprc, balanced_accuracy_score, recall_score, brier_score_loss
+from geobind.nn.metrics import precision_score, jaccard_score, f1_score, accuracy_score, matthews_corrcoef
 from geobind.nn.metrics import reportMetrics, chooseBinaryThreshold
 
 METRICS_FN = {
@@ -16,14 +16,16 @@ METRICS_FN = {
     'auprc': auprc,
     'recall': recall_score,
     'precision': precision_score,
-    'f1_score': f1_score
+    'f1_score': f1_score,
+    'brier_score': brier_score_loss,
+    'matthews_corrcoef': matthews_corrcoef
 }
 
 def registerMetric(name, fn):
     METRICS_FN[name] = fn
 
 class Evaluator(object):
-    def __init__(self, model, nc, device="cpu", metrics=None, post_process=None):
+    def __init__(self, model, nc, device="cpu", metrics=None, post_process=None, negative_class=0, labels=None):
         self.model = model # must implement the 'forward' method
         self.device = device
         
@@ -50,14 +52,16 @@ class Evaluator(object):
                 }
             elif nc > 2:
                 # three or more classes 
+                if labels is None:
+                    labels = list(range(nc))
+                    labels.remove(negative_class)
                 metrics={
-                    'auroc': {'average': 'weighted'},
-                    'auprc': {'average': 'weighted'},
                     'balanced_accuracy': {},
-                    'mean_iou': {'average': 'weighted'},
-                    'precision': {'average': 'weighted', 'zero_division': 0},
-                    'recall': {'average': 'weighted', 'zero_division': 0},
-                    'accuracy': {}
+                    'mean_iou': {'average': 'weighted', 'labels': labels},
+                    'precision': {'average': 'weighted', 'zero_division': 0, 'labels': labels},
+                    'recall': {'average': 'weighted', 'zero_division': 0, 'labels': labels},
+                    'accuracy': {},
+                    'matthews_corrcoef': {}
                 }
             else:
                 # TODO - assume regression
