@@ -87,25 +87,48 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_m
 def getDataArrays(INP):
     arrays = []
     for inp in INP:
-        m = re.match("(w+)(d*)", inp)
-        
         if inp in data:
             arrays.append(data[inp])
-        elif inp[0] == 'X':
-            i = int(inp[1:])
-            arrays.append(data['X'][:,i])
-        elif inp in extras:
-            arrays.append(extras[inp])
-        elif inp[0] in extras:
-            i = int(inp[1:])
-            arrays.append(extras[inp[0]][:,i])
-    
+        else:
+            m = re.match("(w+)(d*)", inp)
+            if m:
+                i = int(m.group(2))
+                key = m.group(1)
+                if key in data:
+                    arrays.append(data[key][:,i])
+            else:
+                for key in data:
+                    dtype = data[key].dtype
+                    if not any([dtype == np.int64, dtype == np.bool, dtype == np.float32, dtype == np.float64]):
+                        continue
+                    if re.search(inp, key):
+                        arrays.append(data[key])
+                        break
     return arrays
 
+def getDataFields(data, key_name=None):
+    feature_list = ""
+    for key in data:
+        if key == "V" or key == "F" or key == "N":
+            continue
+        dtype = data[key].dtype
+        if any([dtype == np.int64, dtype == np.bool, dtype == np.float32, dtype == np.float64]):
+            if data[key].ndim > 1:
+                if key_name and key in key_name:
+                    for i in range(data[key].shape[1]):
+                        feature_list += "{}{:<2d}: {}\n".format(key, i, key_name[key][i])
+                else:
+                    for i in range(data[key].shape[1]):
+                        feature_list += "{}{:<2d}: data field\n".format(key, i)
+            else:
+                feature_list += "{}: data field\n".format(key)
+    
+    return feature_list
+
 # Read in data files
-data = np.load(ARGS.data_file)
+data = np.load(ARGS.data_file, allow_pickle=True)
 if ARGS.extras_file:
-    extras = np.load(ARGS.extras_file)
+    extras = np.load(ARGS.extras_file, allow_pickle=True)
 
 if ARGS.point_cloud:
     mesh = trimesh.PointCloud(vertices=data['V'], process=False)
@@ -114,27 +137,12 @@ else:
 
 # list of features in data file
 feature_list = ""
-if "feature_names" in data:
-    for i, feature in enumerate(data['feature_names']):
-        feature_list += "X{:<2d}: {}\n".format(i, feature)
-else:
-    if 'X' in data:
-        for i in range(data['X'].shape[1]):
-            feature_list += "X{:<2d}: X{:<2d}\n".format(i, i)
-    if 'P' in data:
-        for i in range(data['P'].shape[1]):
-            feature_list += "P{:<2d}: P{:<2d}\n".format(i, i)
-if 'Y' in data:
-    feature_list += "Y: ground-truth labels\n"
-if 'Ypr' in data:
-    feature_list += "Ypr: predicted labels\n"
+#if "feature_names" in data:
+    #for i, feature in enumerate(data['feature_names']):
+        #feature_list += "X{:<2d}: {}\n".format(i, feature)
+feature_list += getDataFields(data, key_name={'X': data['feature_names']})
 if ARGS.extras_file:
-    for key in extras:
-        if extras[key].ndim > 1:
-            for i in range(extras[key].shape[1]):
-                feature_list += "{}{:<2d}: supplied data field\n".format(key, i)
-        else:
-            feature_list += "{}: supplied data field\n".format(key)
+    feature_list += getDataFields(extras)
 feauture_list = feature_list.strip()
 
 # feature array
