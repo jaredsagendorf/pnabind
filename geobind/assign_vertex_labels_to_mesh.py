@@ -10,7 +10,7 @@ from scipy.spatial import cKDTree
 from geobind.structure.data import data
 
 class AtomToClassMapper(object):
-    def __init__(self, ligand_info, default=None):
+    def __init__(self, ligand_info, default=None, name="LIGANDS"):
         
         if isinstance(ligand_info, str):
             # check if it's a pre-built label set, otherwise assume it's a file name
@@ -43,12 +43,15 @@ class AtomToClassMapper(object):
                         ]
                     }
                 )
-            print(self.regexes)
         else:
             self.regexes = ligand_info
         self.default = self.regexes['default']
         self.nc = self.regexes['nc']
-        self.class_labels = self.regexes['classes']
+        self.classes = self.regexes['classes']
+        if "name" in self.regexes:
+            self.name = self.regexes["name"]
+        else:
+            self.name = name
         
         assert isinstance(self.default, int)
     
@@ -198,7 +201,7 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
     Y[:,0] += 1e-5 # add small value to default class to avoid possible ties  
     for atom in structure.get_atoms():
         # check if we include hydrogens
-        if(not hydrogens and atom.element == 'H'):
+        if not hydrogens and atom.element == 'H':
             continue
         
         # assign a class to this atom
@@ -225,12 +228,12 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
             Y[v, c] += w
     Y = np.argmax(Y, axis=1)
     
-    if(smooth):
+    if smooth:
         # smooth labels using a smoothing scheme
         Y = smoothLabels(mesh, Y, 0)
         Y = smoothLabels(mesh, Y, 1)
     
-    if(mask):
+    if mask :
         # mask the boundaries of any binding region
         Yn = np.argwhere(Y == 0).flatten()
         Yb = np.argwhere(Y != 0).flatten()
@@ -240,7 +243,7 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
             ind = [i for j in query for i in j] # need to flatten this list of lists
             Y[Yn[ind]] = -1
     
-    return Y, atom_mapper
+    return Y
 
 def assignMeshLabelsFromList(structure, mesh, residue_ids, distance_cutoff=2.5, smooth=False):
     # loop over residues
