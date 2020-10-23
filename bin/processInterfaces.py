@@ -12,7 +12,7 @@ arg_parser.add_argument("-c", "--config", dest="config_file", required=True,
 arg_parser.add_argument("-m", "--moieties_file", dest="moieties_file",
                 help="A file in JSON format containing regexes which assign atoms to a class or the name of a built-in label set.")
 arg_parser.add_argument("-r", "--refresh", action='store_true', default=False,
-                help="recompute mesh even if present")
+                help="recompute mesh/features/labels even if present")
 arg_parser.add_argument("-E", "--no_electrostatics", action='store_true',
                 help="do not calculate electrostatic features")
 arg_parser.add_argument("-L", "--no_labels", dest="no_labels", action='store_true', default=False,
@@ -23,6 +23,10 @@ arg_parser.add_argument("-A", "--no_adjacency", dest="no_adjacency", action='sto
                 help="do not write mesh adjacency matrix to file")
 arg_parser.add_argument("-d", "--debug", action='store_true', default=False,
                 help="write additional information")
+arg_parser.add_argument("-l", "--ligand_list", dest="ligand_list", nargs="+",
+                help="a list of ligand identifiers")
+arg_parser.add_argument("-n", "--ligand_list_name",
+                help="a name for the ligand set")
 ARGS = arg_parser.parse_args()
 
 # builtin modules
@@ -72,28 +76,35 @@ def main():
         standard_area = D.standard_sesa
     
     # Create Atom Mapper object
-    if "MOIETIES" in C:
-        atom_mapper = AtomToClassMapper(C["MOIETIES"])
-    elif ARGS.moieties_file:
-        atom_mapper = AtomToClassMapper(ARGS.moieties_file)
-    elif "LIGAND_LIST" in C:
-        atom_mapper = AtomToClassMapper(C["LIGAND_LIST"], default=0)
-    elif "MOIETY_LABEL_SET_NAME" in C:
-        atom_mapper = AtomToClassMapper(C["MOIETY_LABEL_SET_NAME"])
+    if not ARGS.no_labels:
+        if ARGS.moieties_file:
+            atom_mapper = AtomToClassMapper(ARGS.moieties_file)
+        elif ARGS.ligand_list:
+            name = ARGS.ligand_list_name if ARGS.ligand_list_name else "LIGANDS"
+            atom_mapper = AtomToClassMapper(ARGS.ligand_list, default=0, name=name)
+        elif "MOIETIES" in C:
+            atom_mapper = AtomToClassMapper(C["MOIETIES"])
+        elif "LIGAND_LIST" in C:
+            atom_mapper = AtomToClassMapper(C["LIGAND_LIST"], default=0, name=C.get("LIGAND_SET_NAME", "LIGANDS"))
+        elif "MOIETY_LABEL_SET_NAME" in C:
+            atom_mapper = AtomToClassMapper(C["MOIETY_LABEL_SET_NAME"])
+        label_names = "Y_{}".format(atom_mapper.name)
     
     ### Load the interface file which describes a list of DNA-protein interfaces to process ########
     listFile = ARGS.structures_file
     PROCESSED = open(ARGS.output_file, "w")
+    
+    # main loop
     for fileName in open(listFile):
         fileName = fileName.strip()
         if(fileName[0] == '#'):
             # skip commented lines
             continue
+        
+        ### LOAD STRUCTURE #########################################################################
         protein_id = '.'.join(fileName.split('.')[0:-1]) + '_protein'
         structure = StructureData(fileName, name=protein_id, path=C["PDB_FILES_PATH"])
         protein, lig = getEntities(structure, atom_mapper, D.regexes)
-        protein.save()
-        lig.save()
         
         # Clean the protein entity
         protein, pqr = geobind.structure.cleanProtein(protein, res_mutator, hydrogens=C['HYDROGENS'])
@@ -105,7 +116,7 @@ def main():
         # Generate a mesh
         mesh_prefix = "{}_mesh".format(protein_id)
         mesh_kwargs = dict(op_mode='normal', surface_type='skin', skin_parameter=0.45, grid_scale=C.get("GRID_SCALE", 2.0))
-        if(ARGS.refresh):
+        if ARGS.refresh:
             mesh = geobind.mesh.generateMesh(protein, 
                 prefix=mesh_prefix,
                 basedir=C["MESH_FILES_PATH"],
@@ -116,7 +127,7 @@ def main():
             meshFile = mesh.save(C['MESH_FILES_PATH'], overwrite=True)
         else:
             meshFile = ospj(C['MESH_FILES_PATH'], "{}_mesh.off".format(protein_id))
-            if(os.path.exists(meshFile)):
+            if os.path.exists(meshFile):
                 # found an existing mesh, load it
                 mesh = geobind.mesh.Mesh(meshFile, name=mesh_prefix)
                 logging.info("Loaded existing mesh for: %s", protein_id)
@@ -130,9 +141,25 @@ def main():
                 )
                 logging.info("Computed new mesh for: %s", protein_id)
                 meshFile = mesh.save(C['MESH_FILES_PATH'])
+                ARGS.refresh = True
         
+        ### DATA ARRAYS ############################################################################
+        # Check to see what already exists and what we need to compute
+        fname = ospj(C['FEATURE_DATA_PATH'], "{}_data.npz".format(protein_id))
+        if os.path.exists(fname) and not ARGS.refresh:
+            arrays = dict(np.load(fname, allow_pickle=True))
+        else:
+            arrays = {}
+        arrays['V'] = mesh.vertices
+        arrays['F'] = mesh.faces
+        arrays['name'] = protein_id
+        if mesh.vertex_normals is not None:
+            arrays['N'] = mesh.vertex_normals
+            
         ### FEATURES ###############################################################################
-        if(not ARGS.no_features):
+        update_features = (not ARGS.no_features) and (ARGS.refresh or ('X' not in arrays))
+        if update_features:
+            logging.info("Computing a new set of features for %s" , protein_id)
             FEATURES = []
             FEATURE_NAMES = []
             
@@ -194,9 +221,11 @@ def main():
                 FEATURES.append(Xe)
             
         ### LABELS #############################################################################
-        if(not ARGS.no_labels):
+        update_labels = (not ARGS.no_labels) and (ARGS.refresh or (label_names not in arrays))
+        if update_labels:
             # Compute labels
-            Y, class_map = geobind.assignMeshLabelsFromStructure(lig, mesh, atom_mapper,
+            logging.info("Computing a new set of labels for %s" , protein_id)
+            Y = geobind.assignMeshLabelsFromStructure(lig, mesh, atom_mapper,
                 smooth=C["SMOOTH_LABELS"],
                 mask=C["MASK_LABELS"],
                 distance_cutoff=C["MESH_DISTANCE_CUTOFF"],
@@ -205,32 +234,25 @@ def main():
         
         ### OUTPUT #############################################################################
         # Write features to disk
-        arrays = {}
-        arrays['V'] = mesh.vertices
-        arrays['F'] = mesh.faces
-        arrays['name'] = protein_id
-        if(mesh.vertex_normals is not None):
-            arrays['N'] = mesh.vertex_normals
-        
+
         # Vertex features
-        if(not ARGS.no_features):
+        if update_features:
             FEATURES = [x.reshape(-1, 1) if x.ndim == 1 else x for x in FEATURES]
             arrays['X'] = np.concatenate(FEATURES, axis=1)
             arrays['feature_names'] = np.array(FEATURE_NAMES)
         
         # Mesh labels
-        if(not ARGS.no_labels):
-            arrays['Y'] = Y
-            arrays['class_names'] = class_map.class_labels
+        if update_labels:
+            arrays[label_names] = Y
+            arrays['{}_classes'.format(label_names)] = atom_mapper.classes
         
         # Write mesh data to disk
-        fname = ospj(C['FEATURE_DATA_PATH'], "{}_data.npz".format(protein_id))
         np.savez_compressed(fname, **arrays)
         logging.info("Saved mesh data to disk: %s", fname)
         PROCESSED.write("{}_data.npz\n".format(protein_id))
         
         # Write mesh adjacency to disk
-        if(not ARGS.no_adjacency):
+        if not ARGS.no_adjacency:
             fname = ospj(C['FEATURE_DATA_PATH'], "{}_adj.npz".format(protein_id))
             save_npz(fname, mesh.vertex_adjacency_matrix)
             logging.info("Saved adjacency data to disk: %s", fname)
