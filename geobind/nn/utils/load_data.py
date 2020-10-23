@@ -7,7 +7,6 @@ from pickle import dump, load
 import numpy as np
 import torch
 from torch_geometric.data import Data, InMemoryDataset
-from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures
 from sklearn.preprocessing import StandardScaler
 
 # geobind modules
@@ -28,10 +27,10 @@ class NodeScaler(object):
         return self.scaler.transform(array)
 
 class ClassificationDatasetMemory(InMemoryDataset):
-    def __init__(self, data_files, nc, data_dir,
+    def __init__(self, data_files, nc, labels_key, data_dir,
             save_dir=None,
             transform=None,
-            pre_transform=Compose([FaceToEdge(remove_faces=False), PointPairFeatures(cat=True)]),
+            pre_transform=None,
             pre_filter=None,
             balance='balanced',
             percentage=1.0,
@@ -45,6 +44,7 @@ class ClassificationDatasetMemory(InMemoryDataset):
         self.data_dir = data_dir
         self.save_dir = save_dir
         self.data_files = data_files
+        self.labels_key = labels_key
         self.nc = nc
         self.balance = balance
         self.percentage = percentage
@@ -52,10 +52,9 @@ class ClassificationDatasetMemory(InMemoryDataset):
         self.unmasked_class = unmasked_class
         self.scale = scale
         self.scaler = scaler
-        self._scaler = None
-        
-        if(self.scale and self.scaler is None):
-            self._scaler = NodeScaler()
+        self.transform = transform
+        self.pre_filter = pre_filter
+        self.pre_transform = pre_transform
         
         super(ClassificationDatasetMemory, self).__init__(save_dir, transform, pre_transform, pre_filter)
         # load data
@@ -73,7 +72,8 @@ class ClassificationDatasetMemory(InMemoryDataset):
     def processed_file_names(self):
         m = hashlib.md5()
         args = [
-            nc,
+            self.nc,
+            self.labels_key,
             self.balance,
             self.percentage,
             self.remove_mask,
@@ -94,60 +94,120 @@ class ClassificationDatasetMemory(InMemoryDataset):
         return self.save_dir
     
     def process(self):
-        data_list = []
-        
-        # read and process datafiles
-        for f in self.raw_paths:
-            data_arrays = np.load(f)
-            
-            if self.remove_mask:
-                # remove any previous masking
-                data_arrays['Y'][(data_arrays['Y'] == -1)] = self.unmasked_class
-            
-            if self.balance == 'balanced':
-                idxb = balancedClassIndices(data_arrays['Y'], range(self.nc), max_percentage=self.percentage)
-            elif self.balance == 'unmasked':
-                idxb = (data_arrays['Y'] >= 0)
-            elif self.balance == 'all':
-                idxb = (data_arrays['Y'] == data_arrays['Y'])
-            else:
-                raise ValueError("Unrecognized value for `balance` keyword: {}".format(balance))
-            
-            if self._scaler is not None:
-                # add node features to learned scaler
-                self._scaler.update(data_arrays['X'][idxb])
-            
-            data = Data(
-                x=torch.tensor(data_arrays['X'], dtype=torch.float32),
-                y=torch.tensor(data_arrays['Y'], dtype=torch.int64),
-                pos=torch.tensor(data_arrays['V'], dtype=torch.float32),
-                norm=torch.tensor(data_arrays['N'], dtype=torch.float32),
-                face=torch.tensor(data_arrays['F'].T, dtype=torch.int64),
-                edge_attr=None,
-                edge_index=None
-            )
-            data.mask = torch.tensor(idxb, dtype=torch.bool)
-            data_list.append(data)
-        
-        if self.scale and (self.scaler is None):
-            # set the scaler to the learned scaler
-            self.scaler = self._scaler
-            self.scaler.fit()
-        
-        if self.pre_filter is not None:
-            data_list = [data for data in data_list if self.pre_filter(data)]
-                
-        if self.pre_transform is not None:
-            data_list = [self.pre_transform(data) for data in data_list]
-        
-        if self.scale:
-            # scale node features in each data object
-            for data in data_list:
-                data.x = torch.tensor(self.scaler.scale(data.x), dtype=torch.float32)
+        # get datalist and scaler
+        data_list, transforms = _processData(self.raw_paths, self.nc, self.labels_key,
+            balance=self.balance, 
+            remove_mask=self.remove_mask,
+            unmasked_class=self.unmasked_class,
+            scaler=self.scaler,
+            scale=self.scale,
+            pre_filter=self.pre_filter,
+            pre_transform=self.pre_transform,
+            transform=self.transform
+        )
         
         # save data
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
         
         # save scaler
-        dump(self.scaler, open(self.processed_paths[1], "wb"))
+        scaler = transforms['scaler']
+        if scaler is not None:
+            self.scaler = scaler
+            dump(scaler, open(self.processed_paths[1], "wb"))
+
+def _processData(data_files, nc, labels_key, 
+        balance="unmasked",
+        remove_mask=False,
+        unmasked_class=0,
+        scaler=None,
+        scale=True,
+        transform=None,
+        pre_filter=None,
+        pre_transform=None
+    ):
+    data_list = []
+    
+    # read and process datafiles
+    for f in data_files:
+        data_arrays = np.load(f)
+        
+        if remove_mask:
+            # remove any previous masking
+            data_arrays[labels_key][(data_arrays[labels_key] == -1)] = unmasked_class
+        
+        if balance == 'balanced':
+            idxb = balancedClassIndices(data_arrays[labels_key], range(nc), max_percentage=self.percentage)
+        elif balance == 'unmasked':
+            idxb = (data_arrays[labels_key] >= 0)
+        elif balance == 'all':
+            idxb = (data_arrays[labels_key] == data_arrays[labels_key])
+        else:
+            raise ValueError("Unrecognized value for `balance` keyword: {}".format(balance))
+        
+        data = Data(
+            x=torch.tensor(data_arrays['X'], dtype=torch.float32),
+            y=torch.tensor(data_arrays[labels_key], dtype=torch.int64),
+            pos=torch.tensor(data_arrays['V'], dtype=torch.float32),
+            norm=torch.tensor(data_arrays['N'], dtype=torch.float32),
+            face=torch.tensor(data_arrays['F'].T, dtype=torch.int64),
+            edge_attr=None,
+            edge_index=None
+        )
+        data.mask = torch.tensor(idxb, dtype=torch.bool)
+        data_list.append(data)
+    
+    # filter data
+    if pre_filter is not None:
+        data_list = [data for data in data_list if pre_filter(data)]
+    
+    # transform data
+    if pre_transform is not None:
+        data_list = [pre_transform(data) for data in data_list]
+    
+    # scale data
+    if scale:
+        # build a scaler
+        if scaler is None:
+            scaler = NodeScaler()
+            for data in data_list:
+                scaler.update(data.x[data.mask])
+            scaler.fit()
+        
+        # scale node features in each data object
+        for data in data_list:
+            data.x = torch.tensor(scaler.scale(data.x), dtype=torch.float32)
+    
+    transforms = {
+        "scaler": scaler,
+        "transform": transform,
+        "pre_transform": pre_transform,
+        "pre_filter": pre_filter
+    }
+    return data_list, transforms
+
+def loadDataset(data_files, nc, labels_key, data_dir, cache_dataset=False, **kwargs):
+    if cache_dataset:
+        dataset = ClassificationDatasetMemory(data_files, nc, labels_key, data_dir, **kwargs)
+        transforms = {
+            "scaler": dataset.scaler,
+            "transform": dataset.transform,
+            "pre_transform": dataset.pre_transform,
+            "pre_filter": dataset.pre_filter
+        }
+        info = {
+            "num_features": dataset.num_node_features,
+            "num_classes": nc,
+            "num_instances": len(dataset)
+        }
+    else:
+        data_files = [osp.join(data_dir, f) for f in data_files]
+        
+        dataset, transforms = _processData(data_files, nc, labels_key, **kwargs)
+        info = {
+            "num_features": int(dataset[0].x.shape[1]),
+            "num_classes": nc,
+            "num_instances": len(dataset)
+        }
+    
+    return dataset, transforms, info

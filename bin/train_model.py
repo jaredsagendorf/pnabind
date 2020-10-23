@@ -19,7 +19,7 @@ arg_parser.add_argument("--write_test_predictions", action="store_true", default
 arg_parser.add_argument("--output_path", help="Directory to place output.")
 
 # dataset options
-arg_parser.add_argument("--balance", type=str, choices=['balanced', 'unmasked', 'all'], default='unmasked',
+arg_parser.add_argument("--balance", type=str, choices=['balanced', 'unmasked', 'all'], default=None,
                 help="Decide which set of training labels to use.")
 arg_parser.add_argument("--no_shuffle", action="store_false", dest="shuffle", default=None,
                 help="Don't shuffle training data.")
@@ -33,7 +33,7 @@ arg_parser.add_argument("--batch_size", type=int,
                 help="Size of the mini-batches.")
 arg_parser.add_argument("--epochs", type=int,
                 help="Number of epochs to train for.")
-arg_parser.add_argument("--weight_method", type=str, choices=['none', 'batch', 'dataset'], default='batch',
+arg_parser.add_argument("--weight_method", type=str, choices=['none', 'batch', 'dataset'], default=None,
                 help="How to weight each class when training on dataset.")
 
 # misc options
@@ -58,9 +58,10 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.nn import DataParallel
 from torch_geometric.data import DataLoader, DataListLoader
+from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures
 
 # Geobind modules
-from geobind.nn.utils import ClassificationDatasetMemory, classWeights
+from geobind.nn.utils import loadDataset, classWeights
 from geobind.nn import Trainer, Evaluator
 from geobind.nn.models import NetConvEdgePool, PointNetPP, MultiBranchNet
 from geobind.nn.metrics import reportMetrics
@@ -80,7 +81,7 @@ defaults = {
     "balance": "unmasked",
     "shuffle": True,
     "eval_every": 2,
-    "weight_method": "batch"
+    "weight_method": "dataset"
 }
 ARGS = arg_parser.parse_args()
 with open(ARGS.config_file) as FH:
@@ -141,23 +142,23 @@ else:
 ####################################################################################################
 ### Load training/validation data ##################################################################
 
-train_data = [_.strip() for _ in open(ARGS.train_file).readlines()]
-valid_data = [_.strip() for _ in open(ARGS.valid_file).readlines()]
+train_datafiles = [_.strip() for _ in open(ARGS.train_file).readlines()]
+valid_datafiles = [_.strip() for _ in open(ARGS.valid_file).readlines()]
 
 remove_mask = (C["balance"] == 'all')
-train_dataset = ClassificationDatasetMemory(
-        train_data, C["nc"], C["data_dir"],
+train_dataset, transforms, train_info = loadDataset(train_datafiles, C["nc"], C["labels_key"], C["data_dir"],
+        cache_dataset=C.get("cache_dataset", False),
         balance=C["balance"],
         remove_mask=remove_mask,
-        scale=True
+        scale=True,
+        pre_transform=Compose([FaceToEdge(remove_faces=False), PointPairFeatures(cat=True)])
     )
-
-valid_dataset = ClassificationDatasetMemory(
-        valid_data, C["nc"], C["data_dir"],
+valid_dataset, _, valid_info = loadDataset(valid_datafiles, C["nc"], C["labels_key"], C["data_dir"],
+        cache_dataset=C.get("cache_dataset", False),
         balance='unmasked',
         remove_mask=False,
         scale=True,
-        scaler=train_dataset.scaler
+        **transforms
     )
 
 if torch.cuda.device_count() <= 1 or C["single_gpu"] or C["debug"]:
@@ -172,7 +173,7 @@ else:
 ####################################################################################################
 
 # Create the model we'll be training.
-nF = train_dataset.num_node_features
+nF = train_info['num_features']
 if C["model"]["name"] == "NetConvEdgePool":
     model = NetConvEdgePool(nF, C['nc'], **C["model"]["kwargs"])
 elif C["model"]["name"] == "PointNetPP":
@@ -212,7 +213,7 @@ if(C["scheduler"]["name"] == "ReduceLROnPlateau"):
 elif(C["scheduler"]["name"] == "ExponentialLR"):
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, **C["scheduler"]["kwargs"])
 elif(C["scheduler"]["name"] == "OneCycleLR"):
-    nsteps = int(np.ceil(len(train_data)/(C["batch_size"]*max(1, torch.cuda.device_count()))))
+    nsteps = int(np.ceil(len(train_datafiles)/(C["batch_size"]*max(1, torch.cuda.device_count()))))
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, C["scheduler"]["max_lr"], epochs=C["epochs"], steps_per_epoch=nsteps, **C["scheduler"]["kwargs"])
 else:
     scheduler = None
@@ -285,14 +286,14 @@ if C["write_test_predictions"]:
     prediction_path = ospj(run_path, "predictions")
     if not os.path.exists(prediction_path):
         os.mkdir(prediction_path)
-    lw = max([len(_)-len("_protein_data.npz") for _ in valid_data] + [len("Protein Identifier")])
+    lw = max([len(_)-len("_protein_data.npz") for _ in valid_datafiles] + [len("Protein Identifier")])
     use_header = True
     history = trainer.metrics_history
     threshold = trainer.metrics_history['train']['threshold'][-1] if ("train" in history and "threshold" in history["train"]) else 0.5
     
     val_out = evaluator.eval(DL_vl, use_mask=False, batchwise=True, return_masks=True, return_predicted=True, xtras=['pos', 'face'])
     for i in range(val_out['num_batches']):
-        name = valid_data[i].replace("_protein_data.npz", "")
+        name = valid_datafiles[i].replace("_protein_data.npz", "")
         
         # compute metrics
         y, prob, mask = val_out['y'][i], val_out['output'][i], val_out['masks'][i]
