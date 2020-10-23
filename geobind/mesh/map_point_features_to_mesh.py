@@ -1,6 +1,9 @@
 # third party modules
 import numpy as np
 
+# geobind modules
+from geobind.utils import clipOutliers
+
 def wfn(dist, cutoff, offset=0, weight_method='inverse_distance', minw=0.5, maxw=1.0, ):
     if(minw >= maxw):
         raise ValueError("minw must be < maxw!")
@@ -29,6 +32,9 @@ def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=N
     if(offset == None):
         offset = np.zeros(len(points))
     assert len(points) == len(features) and len(points) == len(offset)
+    
+    if clip_values:
+        X = clipOutliers(X, axis=0)
     
     for i in range(len(points)):
         p = points[i]
