@@ -6,7 +6,7 @@
             "atom_regexes": [
                 {
                     "atom_regex": "^P$|^OP1$|^OP2$|^OP3$|^C1'$|^C3'$|^O5'$|^O4'$|^C5'$|^C4'$|^C2'$|^O3",
-                    "class": 5
+                    "class": 2
                 }
             ]
         },
@@ -26,7 +26,7 @@
             "atom_regexes": [
                 {
                     "atom_regex": "^C2$|^O2$|^C4$|^C5$|^C6$|^N4$|^N3$|^N1$",
-                    "class": 2
+                    "class": 1
                 }
             ]
         },
@@ -36,7 +36,7 @@
             "atom_regexes": [
                 {
                     "atom_regex": "^C4$|^C2$|^N3$|N2$|^C8$|^C5$|^C6$|^N7$|^O6$|^N1$|^N9$",
-                    "class": 3
+                    "class": 1
                 }
             ]
         },
@@ -46,20 +46,17 @@
             "atom_regexes": [
                 {
                     "atom_regex": "^C2$|^N3$|^O2$|^C4$|^C5$|^C6$|^C7$|^O4$|^N1$",
-                    "class": 4
+                    "class": 1
                 }
             ]
         }
     ],
-    "nc": 6,
+    "nc": 3,
     "default": 0,
     "classes": {
         "0": "default",
-        "1": "adenine_base",
-        "2": "cytosine_base",
-        "3": "guanine_base",
-        "4": "thymine_base",
-        "5": "backbone"
+        "1": "base",
+        "2": "backbone"
     },
     "name": "MULTICLASS_STANDARD_SSDNA"
 }
