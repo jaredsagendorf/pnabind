@@ -43,7 +43,10 @@ class Scheduler(object):
             self.history["batch_count"] += 1
 
 class Trainer(object):
-    def __init__(self, model, nc, optimizer, criterion, device='cpu', scheduler=None, evaluator=None, writer=None, checkpoint_path='.', quiet=True):
+    def __init__(self, model, nc, optimizer, criterion, 
+            device='cpu', scheduler=None, evaluator=None, 
+            writer=None, checkpoint_path='.', quiet=True
+    ):
         # parameters
         self.model = model
         self.nc = nc
@@ -54,6 +57,11 @@ class Trainer(object):
         self.device = device
         self.quiet = quiet
         self.checkpoint_path = checkpoint_path
+        
+        # variables to track training progress
+        self.best_state = None
+        self.best_state_metric = None
+        self.best_epoch = 0
         
         # set up scheduler
         if scheduler is not None:
@@ -69,8 +77,12 @@ class Trainer(object):
         # history
         self.metrics_history = {}
     
-    def train(self, nepochs, dataset, validation_dataset=None, batch_loss_every=4, eval_every=2, 
-                    checkpoint_every=None, debug=False, optimizer_kwargs={}, scheduler_kwargs={}):
+    def train(self, nepochs, dataset,
+        validation_dataset=None, batch_loss_every=4, eval_every=2, debug=False,
+        checkpoint_every=None, optimizer_kwargs={}, scheduler_kwargs={},
+        best_state_metric=None, best_state_metric_threshold=None, 
+        best_state_metric_dataset='validation', best_state_metric_goal='max'
+    ):
         # begin training
         if not self.quiet:
             logging.info("Beginning Training ({} epochs)".format(nepochs))
@@ -82,14 +94,16 @@ class Trainer(object):
                 "epoch_start": []
             }
         
+        if best_state_metric_goal == 'max':
+            self.best_state_metric = -999999
+        else:
+            self.best_state_metric = 999999
+        
         batch_count = 0
         first_epoch = True
         for epoch in range(nepochs):
             # set model to training mode
             self.model.train()
-            
-            if debug:
-                mem_stats['epoch_start'].append(batch_count)
             
             # forward + backward + update
             epoch_loss = 0
@@ -109,10 +123,6 @@ class Trainer(object):
                     oom = True
                 if oom:
                     continue
-                
-                if debug:
-                    mem_stats['peak'].append(torch.cuda.max_memory_allocated(self.device)/1e6)
-                    mem_stats['current'].append(torch.cuda.memory_allocated(self.device)/1e6)
                     
                 # update scheduler
                 if self.scheduler is not None:
@@ -120,7 +130,7 @@ class Trainer(object):
                 
                 # write batch-level stats
                 if batch_count % batch_loss_every  == 0:
-                    if(self.writer):
+                    if self.writer:
                         self.writer.add_scalar("train/batch_loss", loss, batch_count)
                 
                 # update batch count
@@ -136,7 +146,7 @@ class Trainer(object):
                 metrics['train']['loss'] = epoch_loss/(n + 1e-5)
                 
                 if(validation_dataset is not None):
-                    metrics['val'] = self.evaluator.getMetrics(validation_dataset, use_mask=True)
+                    metrics['validation'] = self.evaluator.getMetrics(validation_dataset, use_mask=True)
                 
                 # report performance
                 if(not self.quiet):
@@ -146,7 +156,20 @@ class Trainer(object):
                     )
                 self.updateHistory(metrics, epoch)
                 first_epoch = False
-            
+                
+                if best_state_metric:
+                    state_metric = metrics[best_state_metric_dataset][best_state_metric]
+                    if best_state_metric_goal == 'max' and state_metric > best_state_metric_threshold:
+                        if state_metric > self.best_state_metric:
+                            self.best_state_metric = state_metric
+                            self.best_state = self.model.state_dict()
+                            self.best_epoch = epoch
+                    elif best_state_metric_goal == 'min' and state_metric < best_state_metric_threshold:
+                        if state_metric < self.best_state_metric:
+                            self.best_state_metric = state_metric
+                            self.best_state = self.model.state_dict()
+                            self.best_epoch = epoch
+                
             # checkpoint
             if checkpoint_every and (epoch % checkpoint_every == 0):
                 fname = ospj(self.checkpoint_path, "{}.{}.tar".format(self.model_name, epoch))
@@ -155,11 +178,9 @@ class Trainer(object):
                         'model_state_dict': self.model.state_dict(),
                         'optimizer_state_dict': self.optimizer.state_dict(),
                         'epoch': epoch
-                        #'model_parameters': self.model.params() ## implement soon
                     }, fname)
         
-        if debug:
-            return mem_stats
+        self.endTraining()
     
     def optimizer_step(self, batch, y, mask=None, use_mask=True, use_weight=True, weight=None):
         # decide how to weight classes
@@ -195,5 +216,19 @@ class Trainer(object):
                 
                 # add metric to history
                 if metric not in self.metrics_history[tag]:
-                    self.metrics_history[tag][metric] = []
-                self.metrics_history[tag][metric].append(metrics[tag][metric])
+                    self.metrics_history[tag][metric] = {}
+                self.metrics_history[tag][metric][epoch] = metrics[tag][metric]
+    
+    def endTraining(self):
+        """Stuff we want to do at the end of training"""
+        logging.info("Training ended.")
+        
+        # Save best state to file if we kept it
+        if self.best_state is not None:
+            fname = ospj(self.checkpoint_path, "{}.{}.tar".format(self.model_name, "best"))
+            logging.info("Writing best state to file {} (epoch: {})".format(fname, self.best_epoch))
+            logging.info("Best tracked metric achieved: {:.3f}".format(self.best_state_metric))
+            torch.save({
+                    'model_state_dict': self.best_state
+                }, fname)
+            
