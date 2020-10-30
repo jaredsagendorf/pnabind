@@ -1,14 +1,21 @@
 # third party modules
 import torch
-from torch_geometric.nn import DataParallel
 
-def processBatch(model, batch):
-    if(isinstance(model, DataParallel)):
-        mask = torch.cat([data.mask for data in batch]).to(model.device)
-        y = torch.cat([data.y for data in batch]).to(model.device)
+def processBatch(device, batch, xtras=None):
+    batch_data = {}
+    if isinstance(batch, list):
+        batch_data['mask'] = torch.cat([data.mask for data in batch]).to(device)
+        batch_data['y'] = torch.cat([data.y for data in batch]).to(device)
+        if xtras is not None:
+            for item in xtras:
+                batch_data[item] = torch.cat([getattr(data, item) for data in batch]).to(device)
+        batch_data['batch'] = batch
     else:
-        batch = batch.to(model.device)
-        mask = batch.mask
-        y = batch.y
+        batch_data['batch'] = batch.to(device)
+        batch_data['mask'] = batch.mask
+        batch_data['y'] = batch.y
+        if xtras is not None:
+            for item in xtras:
+                batch_data[item] = getattr(batch, item)
     
-    return batch, y, mask
+    return batch_data

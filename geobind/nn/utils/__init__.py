@@ -1,11 +1,13 @@
 from .balanced_class_indices import balancedClassIndices
 from .class_weights import classWeights
 from .load_data import ClassificationDatasetMemory
+from .load_data import loadDataset
 
 __all__ = [
     "balancedClassIndices",
     "classWeights",
-    "ClassificationDatasetMemory"
+    "ClassificationDatasetMemory",
+    "loadDataset"
 ]
 
 ## standard packages

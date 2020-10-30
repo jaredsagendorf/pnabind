@@ -7,17 +7,46 @@ PARSER.add_argument("data_file")
 PARSER.add_argument("extras_file", nargs='?')
 PARSER.add_argument("--color_map", dest='color_map', default='seismic',
         help="Name of a matplotlib color map.")
+PARSER.add_argument("--multiclass_labels", action='store_true',
+        help="Use multiclass coloring")
+PARSER.add_argument("--smooth", action='store_true',
+        help="Turn on smooth shading")
+PARSER.add_argument("--point_cloud", action='store_true',
+        help="Render Point Clouds")
 ARGS = PARSER.parse_args()
 
 # builtin modules
 import os
+import re
 
 # third party modules
 import numpy as np
 import trimesh
 
-# geobind modules
-def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', max_width=4, shift_axis='x', **kwargs):
+# binary label colors
+binary_colors = np.array([
+    [1.00, 1.00, 1.00], # -1: masked
+    [0.55, 0.70, 0.40], #  0: non-binding site
+    [1.00, 0.50, 0.00], #  1: binding site
+    [1.00, 0.00, 0.00], #  2: false positives
+    [0.73, 0.33, 0.83], #  3: false negatives
+])
+
+
+# binary label colors
+multiclass_colors = np.array([
+    [1.00, 1.00, 1.00], # -1: masked
+    [0.55, 0.70, 0.40], #  0: non-binding site
+    [0.87, 0.63, 0.87], #  1: pink
+    [0.00, 1.00, 0.94], #  2: cyan
+    [1.00, 0.50, 0.00], #  3: orange
+    [1.00, 1.00, 0.00], #  4: yellow
+    [0.73, 0.33, 0.83], #  5: purple
+    [51/255, 51/255, 1.0], # 6: blue
+    [1.00, 0.00, 0.00] # 7: red (false prediction)
+])
+
+def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, max_width=4, shift_axis='x', **kwargs):
     # figure out where to get color information
     if(data is None and colors is None):
         # just visualize the mesh geometry
@@ -25,8 +54,11 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', max_width=4
     elif(colors is None):
         # compute colors from the data array
         vertex_colors = []
-        for i in range(data.shape[1]):
-            vertex_colors.append(trimesh.visual.interpolate(data[:,i], color_map=color_map))
+        for i in range(len(data)):
+            if(data[i].dtype == np.int64 or data[i].dtype == np.bool):
+                vertex_colors.append(trimesh.visual.to_rgba(int_color_map[data[i]+1]))
+            else:
+                vertex_colors.append(trimesh.visual.interpolate(data[i], color_map=color_map))
     else:
         # use the given colors
         if(isinstance(colors, list)):
@@ -52,28 +84,66 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', max_width=4
     print("returning scene")
     return trimesh.Scene(scene).show(**kwargs)
 
-# Read in data files
-data = np.load(ARGS.data_file)
-if(ARGS.extras_file):
-    extras = np.load(ARGS.extras_file)
-mesh = trimesh.Trimesh(vertices=data['V'], faces=data['F'], process=False)
+def getDataArrays(INP):
+    arrays = []
+    for inp in INP:
+        if inp in data:
+            arrays.append(data[inp])
+        else:
+            m = re.match("(w+)(d*)", inp)
+            if m:
+                i = int(m.group(2))
+                key = m.group(1)
+                if key in data:
+                    arrays.append(data[key][:,i])
+            else:
+                for key in data:
+                    dtype = data[key].dtype
+                    if not any([dtype == np.int64, dtype == np.bool, dtype == np.float32, dtype == np.float64]):
+                        continue
+                    if re.search(inp, key):
+                        arrays.append(data[key])
+                        break
+    return arrays
 
-# loop input parser
-parser = argparse.ArgumentParser()
-parser.add_argument("--quit", action='store_true', help="exit program")
-parser.add_argument("--list", action='store_true', help="list features available in data file")
-parser.add_argument("-u", type=float, default=None)
-parser.add_argument("-l", type=float, default=None)
-parser.add_argument("x", type=int, nargs='+')
+def getDataFields(data, key_name=None):
+    feature_list = ""
+    for key in data:
+        if key == "V" or key == "F" or key == "N":
+            continue
+        dtype = data[key].dtype
+        if any([dtype == np.int64, dtype == np.bool, dtype == np.float32, dtype == np.float64]):
+            if data[key].ndim > 1:
+                if key_name and key in key_name:
+                    for i in range(data[key].shape[1]):
+                        feature_list += "{}{:<2d}: {}\n".format(key, i, key_name[key][i])
+                else:
+                    for i in range(data[key].shape[1]):
+                        feature_list += "{}{:<2d}: data field\n".format(key, i)
+            else:
+                feature_list += "{}: data field\n".format(key)
+    
+    return feature_list
+
+# Read in data files
+data = np.load(ARGS.data_file, allow_pickle=True)
+if ARGS.extras_file:
+    extras = np.load(ARGS.extras_file, allow_pickle=True)
+
+if ARGS.point_cloud:
+    mesh = trimesh.PointCloud(vertices=data['V'], process=False)
+else:
+    mesh = trimesh.Trimesh(vertices=data['V'], faces=data['F'], process=False)
 
 # list of features in data file
-if "feature_names" in data:
-    feature_list = ""
-    for i, feature in enumerate(data['feature_names']):
-        feature_list += "{:2d}: {}\n".format(i, feature)
-    feauture_list = feature_list.strip()
-else:
-    feature_list = "no feature data found!"
+feature_list = ""
+#if "feature_names" in data:
+    #for i, feature in enumerate(data['feature_names']):
+        #feature_list += "X{:<2d}: {}\n".format(i, feature)
+feature_list += getDataFields(data, key_name={'X': data['feature_names']})
+if ARGS.extras_file:
+    feature_list += getDataFields(extras)
+feauture_list = feature_list.strip()
 
 # feature array
 if("X" in data):
@@ -81,26 +151,25 @@ if("X" in data):
 else:
     size = -1
 
-# binary label colors
-colors = np.array([
-    [1.00, 1.00, 1.00], # -1: masked
-    [0.55, 0.70, 0.40], #  0: non-binding site
-    [1.00, 0.50, 0.00], #  1: binding site
-    [1.00, 0.00, 0.00], #  2: false positives
-    [0.73, 0.33, 0.83], #  3: false negatives
-])
-
 # input string
 input_string = """
 Enter one of the following:
     l to list features
     m to visualize only the mesh
+    c to compare two data fields
     q to exit
-    the single-character name of a data field
-    one or more feature indices to visualize
+    a list of data fields, separated by space (e.g. "X1 X2 Y")
 :""".strip()
 
 ### TODO: add selection like "Y X0 X1 YPR"
+
+# loop input parser
+#parser = argparse.ArgumentParser()
+#parser.add_argument("--quit", action='store_true', help="exit program")
+#parser.add_argument("--list", action='store_true', help="list features available in data file")
+#parser.add_argument("-u", type=float, default=None)
+#parser.add_argument("-l", type=float, default=None)
+#parser.add_argument("x", nargs='+')
 
 # main loop
 while True:
@@ -115,27 +184,29 @@ while True:
         print(feature_list)
     elif(INP == 'm'):
         visualizeMesh(mesh)
-    elif(INP in data or INP in extras):
-        if(INP in data):
-            D = data[INP]
+    elif(inp[0] == 'c'):
+        INP = INP.split()
+        arrays = getDataArrays(INP[1:])
+        
+        # masks where labels disagree
+        if ARGS.multiclass_labels:
+            D = arrays[0]
+            P = arrays[1]
+            ind = (D != P)
+            D[ind] = 7
+            visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors)
         else:
-            D = extras[INP]
-        rgb = trimesh.visual.to_rgba(colors[D+1])
-        visualizeMesh(mesh, colors=rgb)
-    elif(inp.strip() == 'c'):
-        pass
-        #P = np.load(ARGS.compare_file)
-        ## masks where labels disagree
-        #m_np = (D == 0)*(D != P)
-        #m_pn = (D == 1)*(D != P)
-        #D[m_np] = 2
-        #D[m_pn] = 3
+            D = arrays[0]
+            P = arrays[1]
+            m_np = (D == 0)*(D != P)
+            m_pn = (D == 1)*(D != P)
+            D[m_np] = 2
+            D[m_pn] = 3
+            visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors)
     else:
-        args = parser.parse_args(inp.split())
-        drange = [args.l, args.u]
-        for x in args.x:
-            # check x is in range
-            if(x >= size or x < 0):
-                raise IndexError("{} is out of range [{}, {}]".format(x, 0, size-1))
-            print("Min: {:<.4f} Max: {:<.4f} Avg: {:<.4f} Std: {:<.4f}".format(data['X'][:,x].min(), data['X'][:,x].max(), data['X'][:,x].mean(), data['X'][:,x].std()))
-        visualizeMesh(mesh, data['X'][:, args.x], color_map=ARGS.color_map)
+        INP = INP.split()
+        arrays = getDataArrays(INP)
+        if ARGS.multiclass_labels:
+            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors)
+        else:
+            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors)

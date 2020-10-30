@@ -10,48 +10,98 @@ from scipy.spatial import cKDTree
 from geobind.structure.data import data
 
 class AtomToClassMapper(object):
-    def __init__(self, regexes, structure=None):
+    def __init__(self, ligand_info, default=None, name="LIGANDS"):
         
-        if isinstance(regexes, str):
+        if isinstance(ligand_info, str):
             # check if it's a pre-built label set, otherwise assume it's a file name
-            if regexes in data.label_sets:
-                self.regexes = data.label_sets[regexes]
+            if ligand_info in data.label_sets:
+                self.regexes = data.label_sets[ligand_info]
             else:
-                with open(regexes_file) as FH:
+                with open(ligand_info) as FH:
                     self.regexes = json.load(FH)
+        elif isinstance(ligand_info, list):
+            self.regexes = {
+                "residue_regexes": [],
+                "nc": len(ligand_info)+1,
+                "default": default,
+                "classes": {
+                    default: "default",
+                }
+            }
+            for i in range(len(ligand_info)):
+                ligand = ligand_info[i]
+                self.regexes["classes"][i+1] = ligand
+                self.regexes["residue_regexes"].append(
+                    {
+                        "residue_regex": ligand,
+                        "group": ligand,
+                        "atom_regexes": [
+                            {
+                                "atom_regex": ".*",
+                                "class": i+1
+                            }
+                        ]
+                    }
+                )
         else:
-            self.regexes = regexes
+            self.regexes = ligand_info
         self.default = self.regexes['default']
         self.nc = self.regexes['nc']
-        self.structure = structure
+        self.classes = self.regexes['classes']
+        if "name" in self.regexes:
+            self.name = self.regexes["name"]
+        else:
+            self.name = name
         
         assert isinstance(self.default, int)
     
-    def __call__(self, residue, atom):
-        
+    def __call__(self, residue, atom=None, hydrogens=True):
         resn = residue.get_resname()
         atmn = atom.name.strip()
-        
         if atom.element != 'H':
             # a non-hydrogen atom
-            for res_item in self.regexes['regexes']:
-                if re.search(res_item['re'], resn):
+            for res_item in self.regexes['residue_regexes']:
+                if re.search(res_item['residue_regex'], resn):
                     # found matching residue group, iterate over atom regexes
                     for atm_item in res_item['atom_regexes']:
-                        if re.search(atm_item['re'], atmn):
+                        if re.search(atm_item['atom_regex'], atmn):
                             # found matching atom group
                             return atm_item['class']
         else:
             # a hydrogen atom, use class of parent heavy atom
-            if self.structure is not None:
-                parent_atom = self.structure.getNearestNeighbor(atom, hydrogens=False)
-                if(parent_atom.element == 'H'):
-                    print(residue, atom, parent_atom)
-                    exit(0)
-                return self.__call__(parent_atom.get_parent(), parent_atom)
+            if hydrogens:
+                parent_atom = AtomToClassMapper.getParentAtom(residue, atom)
+                return self.__call__(residue, parent_atom)
         
         # no match found, return default class
         return self.default
+    
+    def testResidue(self, residue):
+        """Check if residue is recognized or not"""
+        resn = residue.get_resname()
+        found = False
+        for res_item in self.regexes['residue_regexes']:
+            if re.search(res_item['residue_regex'], resn):
+                found = True
+        
+        return found
+    
+    @classmethod
+    def getParentAtom(cls, residue, atom):
+        children = residue.get_atoms()
+        min_dist = 9999999
+        parent = None
+        for child in children:
+            if child == atom:
+                continue
+            elif child.element == 'H':
+                continue
+            else:
+                dist = atom-child
+                if dist < min_dist:
+                    min_dist = dist
+                    parent = child
+        return parent
 
 def signedVolume(a, b, c, d):
     """Computes the signed volume of a series of tetrahedrons defined by the vertices in 
@@ -137,7 +187,7 @@ def smoothLabels(mesh, key, class_label=1, threshold=16.0):
         vertices = np.hstack(vertices)
         mesh.vertex_attributes[key][vertices] = 1 - class_label
 
-def assignMeshLabelsFromStructure(structure, mesh, atom_to_class,
+def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
         distance_cutoff=4.0,
         hydrogens=True,
         check_for_intersection=True,
@@ -146,23 +196,16 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_to_class,
         mask_cutoff=5.0
     ):
     
-    atom_mapper = AtomToClassMapper(atom_to_class, structure)
     nc = atom_mapper.nc
-    
     Y = np.zeros((len(mesh.vertices), nc)) # V x C one hot encoding, 0 being the default class
     Y[:,0] += 1e-5 # add small value to default class to avoid possible ties  
     for atom in structure.get_atoms():
         # check if we include hydrogens
-        if(not hydrogens and atom.element == 'H'):
+        if not hydrogens and atom.element == 'H':
             continue
-        #aname = atom.name.strip()
-        residue = atom.get_parent()#.get_resname().strip()
         
         # assign a class to this atom
-        #if(nc == 2):
-        #    c = 1
-        #else:
-        #    c = atom_to_class[(rname, aname)]
+        residue = atom.get_parent()
         c = atom_mapper(residue, atom)
         
         # get nearest vertices
@@ -185,18 +228,20 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_to_class,
             Y[v, c] += w
     Y = np.argmax(Y, axis=1)
     
-    if(smooth):
+    if smooth:
         # smooth labels using a smoothing scheme
         Y = smoothLabels(mesh, Y, 0)
         Y = smoothLabels(mesh, Y, 1)
     
-    if(mask):
+    if mask :
         # mask the boundaries of any binding region
         Yn = np.argwhere(Y == 0).flatten()
         Yb = np.argwhere(Y != 0).flatten()
-        Kn = cKDTree(mesh.vertices[Yn])
-        ind = [i for j in Kn.query_ball_point(mesh.vertices[Yb], mask_cutoff) for i in j]
-        Y[Yn[ind]] = -1
+        if len(Yb) > 0:
+            Kn = cKDTree(mesh.vertices[Yn])
+            query = Kn.query_ball_point(mesh.vertices[Yb], mask_cutoff) # all non-bs vertices within `mask_cutoff` of bs vertices
+            ind = [i for j in query for i in j] # need to flatten this list of lists
+            Y[Yn[ind]] = -1
     
     return Y
 
