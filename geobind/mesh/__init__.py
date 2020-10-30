@@ -10,6 +10,7 @@ from .visualize import visualizeMesh
 from .get_mesh_curvature import getMeshCurvature
 from .get_convex_hull_distance import getConvexHullDistance
 from .get_hks import getHKS
+from .smooth_mesh_labels import smoothMeshLabels
 
 __all__ = [
     "Mesh",
@@ -23,5 +24,6 @@ __all__ = [
     "visualizeMesh",
     "getMeshCurvature",
     "getConvexHullDistance",
-    "getHKS"
+    "getHKS",
+    "smoothMeshLabels"
 ]

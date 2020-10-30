@@ -73,15 +73,19 @@ defaults = {
     "no_random": False,
     "debug": False,
     "output_path": ".",
-    "checkpoint_every": 0,
     "tensorboard": True,
     "write": True,
     "write_test_predictions": True,
     "single_gpu": False,
     "balance": "unmasked",
     "shuffle": True,
+    "weight_method": "dataset",
+    "checkpoint_every": 0,
     "eval_every": 2,
-    "weight_method": "dataset"
+    "best_state_metric": "balanced_accuracy",
+    "best_state_metric_threshold": 0.6,
+    "best_state_metric_dataset": "validation", 
+    "best_state_metric_goal": "max" 
 }
 ARGS = arg_parser.parse_args()
 with open(ARGS.config_file) as FH:
@@ -249,30 +253,15 @@ else:
     }
 
 # train
-if C["debug"]:
-    stats = trainer.train(C["epochs"], DL_tr, DL_vl,
-        checkpoint_every=C["checkpoint_every"],
-        eval_every=C["eval_every"],
-        optimizer_kwargs=opt_kw,
-        debug=True
-    )
-    logging.basicConfig(level=logging.INFO)
-    # plot
-    plt.plot(stats["current"], label='current')
-    plt.plot(stats["peak"], label='peak')
-    for x in stats["epoch_start"]:
-        plt.axvline(x, color='k')
-    plt.xlabel("iteration")
-    plt.ylabel("GPU Memory Usage (MB)")
-    plt.legend()
-    plt.savefig("{}_memusage.png".format(run_name))
-else:
-    trainer.train(C["epochs"], DL_tr, DL_vl,
-        checkpoint_every=C["checkpoint_every"],
-        eval_every=C["eval_every"],
-        optimizer_kwargs=opt_kw,
-        debug=False
-    )
+trainer.train(C["epochs"], DL_tr, DL_vl,
+    optimizer_kwargs=opt_kw,
+    checkpoint_every=C["checkpoint_every"],
+    eval_every=C["eval_every"],
+    best_state_metric=C["best_state_metric"],
+    best_state_metric_threshold=C["best_state_metric_threshold"],
+    best_state_metric_dataset=C["best_state_metric_dataset"], 
+    best_state_metric_goal=C["best_state_metric_goal"]
+)
 
 # Write final training predictions to file
 if C["write"]:
@@ -289,9 +278,9 @@ if C["write_test_predictions"]:
     lw = max([len(_)-len("_protein_data.npz") for _ in valid_datafiles] + [len("Protein Identifier")])
     use_header = True
     history = trainer.metrics_history
-    threshold = trainer.metrics_history['train']['threshold'][-1] if ("train" in history and "threshold" in history["train"]) else 0.5
+    threshold = trainer.metrics_history['train']['threshold'][trainer.best_epoch] if ("train" in history and "threshold" in history["train"]) else 0.5
     
-    val_out = evaluator.eval(DL_vl, use_mask=False, batchwise=True, return_masks=True, return_predicted=True, xtras=['pos', 'face'])
+    val_out = evaluator.eval(DL_vl, use_mask=False, batchwise=True, return_masks=True, return_predicted=True, xtras=['pos', 'face'], threshold=threshold)
     for i in range(val_out['num_batches']):
         name = valid_datafiles[i].replace("_protein_data.npz", "")
         

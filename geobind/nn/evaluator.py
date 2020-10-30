@@ -106,7 +106,7 @@ class Evaluator(object):
                 masks.append(mask.cpu().numpy())
             
             if return_predicted:
-                y_prs.append(self.predictClass(out, **kwargs))
+                y_prs.append(self.predictClass(out, y, **kwargs))
             
             if xtras is not None:
                 # these items will not be masked even if `use_mask == True`
@@ -145,7 +145,7 @@ class Evaluator(object):
             y_gt, outs = args
         
         # Get predicted class labels
-        y_pr = self.predictClass(outs, threshold=threshold, threshold_metric=threshold_metric, report_threshold=report_threshold)
+        y_pr = self.predictClass(outs, y_gt, metric_values, threshold=threshold, threshold_metric=threshold_metric, report_threshold=report_threshold)
         
         # Compute metrics
         for metric, kw in self.metrics.items():
@@ -158,15 +158,17 @@ class Evaluator(object):
         
         return metric_values
     
-    def predictClass(self, outs, threshold=None, threshold_metric='balanced_accuracy', report_threshold=False):
+    def predictClass(self, outs, y_gt=None, metrics_dict=None, threshold=None, threshold_metric='balanced_accuracy', report_threshold=False):
         # Decide how to determine `y_pr` from `outs`
         if self.nc == 2:
-            if threshold is None:
+            if (threshold is None) and (y_gt is not None):
                 # sample n_samples threshold values
                 threshold, _  = chooseBinaryThreshold(y_gt, outs[:,1], metric_fn=METRICS_FN[threshold_metric], **self.metrics[threshold_metric])
+            elif (threshold is None) and (y_gt is None):
+                threshold = 0.5
             y_pr = (outs[:,1] >= threshold)
-            if report_threshold:
-                metric_values['threshold'] = threshold
+            if report_threshold and (metrics_dict is not None):
+                metrics_dict['threshold'] = threshold
         elif self.nc > 2:
             y_pr = np.argmax(outs, axis=1).flatten()
         
