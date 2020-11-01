@@ -2,7 +2,7 @@
 import logging
 from os.path import join as ospj
 
-# third part modules
+# third party modules
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR, ExponentialLR
 from torch_geometric.nn import DataParallel

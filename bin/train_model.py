@@ -263,15 +263,19 @@ trainer.train(C["epochs"], DL_tr, DL_vl,
     best_state_metric_goal=C["best_state_metric_goal"]
 )
 
+
 # Write final training predictions to file
 if C["write"]:
+    if trainer.best_state is not None:
+        model.load_state_dict(trainer.best_state)
+        logging.info("Loaded best state for model evaluation")
     train_out = evaluator.eval(DL_tr, use_mask=False)
     np.savez_compressed(ospj(run_path, "training_set_predictions.npz"), Y=train_out['y'], P=train_out['output'])
 
 ####################################################################################################
 
 # Evaluate validation dataset
-if C["write_test_predictions"]:
+if C["write"] and C["write_test_predictions"]:
     prediction_path = ospj(run_path, "predictions")
     if not os.path.exists(prediction_path):
         os.mkdir(prediction_path)
