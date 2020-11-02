@@ -133,6 +133,14 @@ class Trainer(object):
                     if self.writer:
                         self.writer.add_scalar("train/batch_loss", loss, batch_count)
                 
+                ######### adding scalar paramters of model to tensorboard ######
+                if((params_to_write is not None) and self.writer):
+                    for name, param in self.model.named_parameters():
+                        for param_to_write in params_to_write:
+                            if ((param_to_write in name) and param.requires_grad):
+                                self.writer.add_scalar(name, param.data.cpu().numpy()[0], self.batch_count)
+                                self.writer.add_scalar(name + "_grad", param.grad.cpu().numpy()[0], self.batch_count)
+                               #print (name, param.data, param.requires_grad, param.grad)
                 # update batch count
                 batch_count += 1
                 epoch_loss += loss
