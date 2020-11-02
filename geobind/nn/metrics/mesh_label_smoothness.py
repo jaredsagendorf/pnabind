@@ -21,8 +21,11 @@ def meshLabelSmoothness(mesh, attribute, method="weighted_vertex"): # requires: 
             mesh.vertex_attributes[attribute][mesh.edges[:,1]]).astype(int)))
    
     elif(method == "vertex"):
-        '''For each class calculate (number of vertices of that class which has all neighbours of the same class / total number of members of that class), 
-                return average over all classes'''
+        '''For each class calculate 
+            (number of vertices with all neighbours from same class / total number of members of that class), 
+            return average over all classes'''    
+        g = nx.from_edgelist(mesh.edges_unique) 
+        one_ring = np.array([np.array(list(g[i].keys())) for i in range(len(mesh.vertices))])
         labels = np.sort(np.unique(mesh.vertex_attributes[attribute]))
         total = 0
         for c in labels:
@@ -36,8 +39,11 @@ def meshLabelSmoothness(mesh, attribute, method="weighted_vertex"): # requires: 
         return total/len(labels)
     
     elif(method == "weighted_vertex"):
-        '''For each class calculate (number of vertices of that class which has all neighbours of the same class / class size), 
+        '''For each class calculate 
+                (number of vertices with all neighbours from same class / class size), 
                 return average over all classes weighted by inverse of class size'''
+        g = nx.from_edgelist(mesh.edges_unique) 
+        one_ring = np.array([np.array(list(g[i].keys())) for i in range(len(mesh.vertices))])
         labels = np.sort(np.unique(mesh.vertex_attributes[attribute]))
         wt_total = 0
         denom = 0
