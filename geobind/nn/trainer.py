@@ -7,6 +7,7 @@ import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR, ExponentialLR
 from torch_geometric.nn import DataParallel
 import tensorflow as tf
+import numpy as np
 
 # geobind modules
 from geobind.nn.utils import classWeights
