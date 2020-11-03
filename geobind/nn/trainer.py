@@ -175,7 +175,7 @@ class Trainer(object):
                                 if(param.data.cpu().numpy().flatten().shape[0] == 1):
                                     self.writer.add_scalar(name, param.data.cpu().numpy()[0], self.batch_count)
                                     self.writer.add_scalar(name + "_grad", param.grad.cpu().numpy()[0], self.batch_count)
-                                if(param.data.cpu().numpy().flatten().shape[0] <= 4):
+                                elif(param.data.cpu().numpy().flatten().shape[0] <= 4):
                                     for i in range(1,param.data.cpu().numpy().flatten().shape[0] + 1):
                                         self.writer.add_scalar(name + "_" + str(i), param.data.cpu().numpy().flatten()[i-1], self.batch_count)
                                         self.writer.add_scalar(name + "_grad_" + str(i), param.grad.cpu().numpy().flatten()[i-1], self.batch_count)
