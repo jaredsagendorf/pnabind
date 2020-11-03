@@ -81,8 +81,6 @@ class Trainer(object):
     
     def log_histogram(self, tag, values, step, bins=1000):
         """Logs the histogram of a list/vector of values."""
-        # Convert to a numpy array
-        values = np.array(values)
         
         # Create histogram using numpy        
         counts, bin_edges = np.histogram(values, bins=bins)
@@ -109,7 +107,6 @@ class Trainer(object):
         # Create and write Summary
         summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])
         self.writer.add_summary(summary, step)
-        self.writer.flush()
    
     def train(self, nepochs, dataset,
         validation_dataset=None, batch_loss_every=4, eval_every=2, debug=False,
