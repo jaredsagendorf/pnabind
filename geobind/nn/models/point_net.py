@@ -1,9 +1,13 @@
+# third party modules
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import ReLU, Sequential as Seq, Linear as Lin, BatchNorm1d as BN
 from torch_geometric.nn import radius, fps, knn_interpolate
 from torch_geometric.nn import PointConv, PPFConv, GraphConv
+
+# geobind modules
+from geobind.nn.layers import ContinuousCRF
 
 def MLP(channels, batch_norm=True):
     if batch_norm:
@@ -78,6 +82,7 @@ class FPModule(torch.nn.Module):
 class PointNetPP(torch.nn.Module):
     def __init__(self, nIn, nOut=None, 
             conv_args=None,
+            crf_args={},
             depth=3,
             nhidden=32,
             act='relu',
@@ -86,7 +91,8 @@ class PointNetPP(torch.nn.Module):
             max_neighbors=64,
             knn_num=3,
             name='pointnet_pp',
-            lin=True
+            lin=True,
+            crf=False
         ):
         super(PointNetPP, self).__init__()
         ### Set up ###
@@ -94,6 +100,7 @@ class PointNetPP(torch.nn.Module):
         self.name = name
         self.conv_name = conv_args["name"]
         self.lin = lin
+        self.crf = crf
         if ratios is None:
             ratios = [0.5]*depth
         assert len(ratios) == depth
@@ -120,6 +127,9 @@ class PointNetPP(torch.nn.Module):
             self.SA_modules.append(SAModule(nhidden, nhidden, conv_args, ratios[i], radii[i], max_neighbors=max_neighbors))
             self.FP_modules.append(FPModule(nhidden, nhidden, nhidden, k=knn_num))
         
+        if crf:
+            self.crf1 = ContinuousCRF(**crf_args)
+            
         # linear layers
         if lin:
             self.lin2 = torch.nn.Linear(nhidden, nhidden)
@@ -149,6 +159,10 @@ class PointNetPP(torch.nn.Module):
             fp_out = self.FP_modules[j-1].forward(*fp_out, *sa_outs[j-2])
         x = fp_out[0]
         
+        # crf layer
+        if self.crf:
+            x = self.crf1(x, data.edge_index)
+            
         # lin 2-4
         if self.lin:
             x = self.act(self.lin2(x))

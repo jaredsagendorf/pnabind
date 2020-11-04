@@ -1,4 +1,4 @@
-# third party packages
+# third party modules
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,7 +6,7 @@ from torch_geometric.nn import  FeaStConv, SplineConv, EdgePooling, GMMConv, NNC
 from torch_geometric.transforms import PointPairFeatures, GenerateMeshNormals
 from torch_geometric.data import Data
 
-# geobind packages
+# geobind modules
 from geobind.nn.layers import EdgePooling_EF
 from geobind.nn.layers import ContinuousCRF
 
