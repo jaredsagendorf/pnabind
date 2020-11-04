@@ -8,14 +8,16 @@ from torch_geometric.data import Data
 
 # geobind packages
 from geobind.nn.layers import EdgePooling_EF
+from geobind.nn.layers import ContinuousCRF
 
 class NetConvEdgePool(torch.nn.Module):
     GMN = GenerateMeshNormals()
     PPF = PointPairFeatures()
     
     def __init__(self, nIn, nOut=None,
-            conv_args=None,
-            pool_args=None,
+            conv_args={},
+            pool_args={},
+            crf_args={},
             nhidden=32,
             depth=2,
             num_top_convs=0,
@@ -27,7 +29,8 @@ class NetConvEdgePool(torch.nn.Module):
             edge_dim=4,
             smoothing=None,
             name='net_conv_edge_pool',
-            lin=True
+            lin=True,
+            crf=False
         ):
         super(NetConvEdgePool, self).__init__()
         self.depth = depth
@@ -40,6 +43,7 @@ class NetConvEdgePool(torch.nn.Module):
         self.smoothing = smoothing
         self.name = name
         self.lin = lin
+        self.crf = crf
         if(act == 'relu'):
             self.act = F.relu
         elif(act == 'elu'):
@@ -131,6 +135,9 @@ class NetConvEdgePool(torch.nn.Module):
                     in_channels = nhidden[i]
                     out_channels = nhidden[i+1]
                 self.up_convs.append(self.makeConv(in_channels, out_channels, conv_args))
+        
+        if crf:
+            self.crf1 = ContinuousCRF(**crf_args)
         
         if lin:
             # up FC layers
@@ -316,8 +323,12 @@ class NetConvEdgePool(torch.nn.Module):
             
             x = self.act(self.up_convs[i](*args))
         
-        del skip_connections
-        del graph_activations
+        #del skip_connections
+        #del graph_activations
+        
+        # crf layer
+        if self.crf:
+            x = self.crf1(x, args[1])
         
         # lin 2-4
         if self.lin:
