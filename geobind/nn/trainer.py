@@ -61,7 +61,7 @@ class Trainer(object):
         # variables to track training progress
         self.best_state = None
         self.best_state_metric = None
-        self.best_epoch = 0
+        self.best_epoch = None
         
         # set up scheduler
         if scheduler is not None:
@@ -81,7 +81,8 @@ class Trainer(object):
         validation_dataset=None, batch_loss_every=4, eval_every=2, debug=False,
         checkpoint_every=None, optimizer_kwargs={}, scheduler_kwargs={},
         best_state_metric=None, best_state_metric_threshold=None, 
-        best_state_metric_dataset='validation', best_state_metric_goal='max'
+        best_state_metric_dataset='validation', best_state_metric_goal='max',
+        params_to_write = None
     ):
         # begin training
         if not self.quiet:
@@ -133,14 +134,13 @@ class Trainer(object):
                     if self.writer:
                         self.writer.add_scalar("train/batch_loss", loss, batch_count)
                 
-                ######### adding scalar paramters of model to tensorboard ######
-                if((params_to_write is not None) and self.writer):
+                # adding scalar paramters of model to tensorboard
+                if (params_to_write is not None) and self.writer:
                     for name, param in self.model.named_parameters():
-                        for param_to_write in params_to_write:
-                            if ((param_to_write in name) and param.requires_grad):
-                                self.writer.add_scalar(name, param.data.cpu().numpy()[0], self.batch_count)
-                                self.writer.add_scalar(name + "_grad", param.grad.cpu().numpy()[0], self.batch_count)
-                               #print (name, param.data, param.requires_grad, param.grad)
+                        if (name in params_to_write) and param.requires_grad:
+                            self.writer.add_scalar(name, param.data.cpu().numpy()[0], batch_count)
+                            self.writer.add_scalar(name + "_grad", param.grad.cpu().numpy()[0], batch_count)
+                
                 # update batch count
                 batch_count += 1
                 epoch_loss += loss
@@ -150,11 +150,11 @@ class Trainer(object):
             # compute metrics
             if (epoch % eval_every == 0) and (self.evaluator is not None):
                 metrics = {}
-                metrics['train'] = self.evaluator.getMetrics(dataset, use_mask=True, report_threshold=True)
+                metrics['train'] = self.evaluator.getMetrics(dataset, report_threshold=True)
                 metrics['train']['loss'] = epoch_loss/(n + 1e-5)
                 
                 if(validation_dataset is not None):
-                    metrics['validation'] = self.evaluator.getMetrics(validation_dataset, use_mask=True)
+                    metrics['validation'] = self.evaluator.getMetrics(validation_dataset)
                 
                 # report performance
                 if(not self.quiet):

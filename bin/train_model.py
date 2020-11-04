@@ -260,7 +260,8 @@ trainer.train(C["epochs"], DL_tr, DL_vl,
     best_state_metric=C["best_state_metric"],
     best_state_metric_threshold=C["best_state_metric_threshold"],
     best_state_metric_dataset=C["best_state_metric_dataset"], 
-    best_state_metric_goal=C["best_state_metric_goal"]
+    best_state_metric_goal=C["best_state_metric_goal"],
+    params_to_write=["module.crf1.log_alpha", "module.crf1.log_beta", "module.crf1.log_sigmasq"]
 )
 
 
@@ -282,15 +283,22 @@ if C["write"] and C["write_test_predictions"]:
     lw = max([len(_)-len("_protein_data.npz") for _ in valid_datafiles] + [len("Protein Identifier")])
     use_header = True
     history = trainer.metrics_history
-    threshold = trainer.metrics_history['train']['threshold'][trainer.best_epoch] if ("train" in history and "threshold" in history["train"]) else 0.5
+    if ("train" in history) and ("threshold" in history["train"]) and (trainer.best_epoch is not None):
+        threshold = trainer.metrics_history['train']['threshold'][trainer.best_epoch]
+    elif ("train" in history) and ("threshold" in history["train"]):
+        epoch = max(list(trainer.metrics_history['train']['threshold'].keys()))
+        threshold = trainer.metrics_history['train']['threshold'][epoch]
+    else:
+        threshold = 0.5
     
-    val_out = evaluator.eval(DL_vl, use_mask=False, batchwise=True, return_masks=True, return_predicted=True, xtras=['pos', 'face'], threshold=threshold)
+    val_out = evaluator.eval(DL_vl, use_masks=False, batchwise=True, return_masks=True, return_predicted=True, return_batches=True, xtras=['pos', 'face'], threshold=threshold)
     for i in range(val_out['num_batches']):
         name = valid_datafiles[i].replace("_protein_data.npz", "")
         
         # compute metrics
         y, prob, mask = val_out['y'][i], val_out['output'][i], val_out['masks'][i]
-        metrics = evaluator.getMetrics(y[mask], prob[mask], threshold=threshold)
+        batch = val_out['batches'][i]
+        metrics = evaluator.getMetrics(y, prob, mask, batch, threshold=threshold)
         reportMetrics({"validation predictions": metrics}, label=("Protein Identifier", name), label_width=lw, header=use_header)
         
         # write predictions to file
