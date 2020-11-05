@@ -13,7 +13,7 @@ class MultiBranchNet(torch.nn.Module):
             act='relu',
             kwargs1=None,
             kwargs2=None,
-            name='multi_branch_net'
+            name='multi_branch_net',
             crf=False,
             crf_args={}
     ):
