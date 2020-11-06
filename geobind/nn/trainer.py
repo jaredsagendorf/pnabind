@@ -1,5 +1,6 @@
 # builtin modules
 import logging
+import json
 from os.path import join as ospj
 
 # third party modules
@@ -75,7 +76,7 @@ class Trainer(object):
             self.model_name = self.model.name
         
         # history
-        self.metrics_history = {}
+        self.metrics_history = {'epochs': []}
     
     def train(self, nepochs, dataset,
         validation_dataset=None, batch_loss_every=4, eval_every=2, debug=False,
@@ -172,21 +173,18 @@ class Trainer(object):
                             self.best_state_metric = state_metric
                             self.best_state = self.model.state_dict()
                             self.best_epoch = epoch
+                            self.metrics_history['best_epoch'] = epoch
                     elif best_state_metric_goal == 'min' and state_metric < best_state_metric_threshold:
                         if state_metric < self.best_state_metric:
                             self.best_state_metric = state_metric
                             self.best_state = self.model.state_dict()
                             self.best_epoch = epoch
+                            self.metrics_history['best_epoch'] = epoch
                 
             # checkpoint
             if checkpoint_every and (epoch % checkpoint_every == 0):
-                fname = ospj(self.checkpoint_path, "{}.{}.tar".format(self.model_name, epoch))
                 logging.info("Writing checkpoint to file {} at epoch {}".format(fname, epoch))
-                torch.save({
-                        'model_state_dict': self.model.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'epoch': epoch
-                    }, fname)
+                self.saveState(epoch, "{}.{}.tar".format(self.model_name, epoch))
         
         self.endTraining()
     
@@ -213,6 +211,10 @@ class Trainer(object):
         return loss.item()
     
     def updateHistory(self, metrics, epoch):
+        # update epoch
+        self.metrics_history['epochs'].append(epoch)
+        
+        # update tags/metrics
         for tag in metrics:
             if tag not in self.metrics_history:
                 self.metrics_history[tag] = {}
@@ -224,8 +226,29 @@ class Trainer(object):
                 
                 # add metric to history
                 if metric not in self.metrics_history[tag]:
-                    self.metrics_history[tag][metric] = {}
-                self.metrics_history[tag][metric][epoch] = metrics[tag][metric]
+                    self.metrics_history[tag][metric] = []
+                self.metrics_history[tag][metric].append(metrics[tag][metric])
+    
+    def getHistory(self, tag, metric, epoch):
+        if epoch == -1:
+            ind = -1
+        else:
+            ind = self.metrics_history['epochs'].index(epoch)
+        
+        return self.metrics_history[tag][metric][ind]
+    
+    def saveState(self, epoch, suffix, metrics=True, optimizer=True):
+        fname = ospj(self.checkpoint_path, suffix)
+        data = {
+            'model_state_dict': self.model.state_dict(),
+            'epoch': epoch
+        }
+        if metrics:
+            data['history'] = self.metrics_history
+        if optimizer:
+            data['optimizer_state_dict'] = self.optimizer.state_dict()
+        
+        torch.save(data, fname)
     
     def endTraining(self):
         """Stuff we want to do at the end of training"""
@@ -233,10 +256,12 @@ class Trainer(object):
         
         # Save best state to file if we kept it
         if self.best_state is not None:
-            fname = ospj(self.checkpoint_path, "{}.{}.tar".format(self.model_name, "best"))
             logging.info("Writing best state to file {} (epoch: {})".format(fname, self.best_epoch))
             logging.info("Best tracked metric achieved: {:.3f}".format(self.best_state_metric))
-            torch.save({
-                    'model_state_dict': self.best_state
-                }, fname)
-            
+            self.saveState(self.best_epoch, "{}.{}.tar".format(self.model_name, "best"), metrics=False, optimizer=False)
+        
+        # Save metrics history to file
+        logging.info("Saving metrics history to file.")
+        MH = open(ospj(self.checkpoint_path, "{}_metrics.json".format(self.model_name)), "w")
+        MH.write(json.dumps(self.metrics_history, indent=2))
+        MH.close()

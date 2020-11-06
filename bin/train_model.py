@@ -284,10 +284,9 @@ if C["write"] and C["write_test_predictions"]:
     use_header = True
     history = trainer.metrics_history
     if ("train" in history) and ("threshold" in history["train"]) and (trainer.best_epoch is not None):
-        threshold = trainer.metrics_history['train']['threshold'][trainer.best_epoch]
+        threshold = trainer.getHistory('train', 'threshold', trainer.best_epoch)
     elif ("train" in history) and ("threshold" in history["train"]):
-        epoch = max(list(trainer.metrics_history['train']['threshold'].keys()))
-        threshold = trainer.metrics_history['train']['threshold'][epoch]
+        threshold = trainer.getHistory('train', 'threshold', -1)
     else:
         threshold = 0.5
     
