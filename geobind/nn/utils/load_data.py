@@ -187,6 +187,10 @@ def _processData(data_files, nc, labels_key,
     return data_list, transforms
 
 def loadDataset(data_files, nc, labels_key, data_dir, cache_dataset=False, **kwargs):
+    if isinstance(data_files, str):
+        with open(data_files) as FH:
+            data_files = [_.strip() for _ in FH.readlines()]
+    
     if cache_dataset:
         dataset = ClassificationDatasetMemory(data_files, nc, labels_key, data_dir, **kwargs)
         transforms = {
