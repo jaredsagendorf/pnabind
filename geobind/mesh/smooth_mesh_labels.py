@@ -1,61 +1,55 @@
-# Raktim Mitra (timkartar7879@gmail.com, raktimmi@usc.edu)
 import numpy as np
 import trimesh
 
-
-def smoothMeshLabels(mesh, key, class_label=1, threshold=16.0):
-    first_pass(mesh, key, class_label=0)
-    first_pass(mesh, key, class_label=1)
-    second_pass(mesh, key)
-    return mesh
-
-def first_pass(mesh, key, class_label=1, threshold=16.0):
-    '''Works for 2 classes only, given as class 0 and class 1'''
-    #### generate face labels taking majority vote of vertex labels
-    y_face = ((mesh.vertex_attributes[key][mesh.faces] == class_label).sum(axis=1) >= 2).astype(np.int32)
-    Nf = y_face.shape[0]
-    node_mask = (y_face == 1)
-    Nc = node_mask.sum()
-
-    #### create a graph with <class> faces as vertices and connect two vertices if the faces share an edge.
-    E_face = mesh.face_adjacency
-    edge_mask = node_mask[E_face[:,0]]*node_mask[E_face[:,1]] # edges where both nodes are a <class> face
-
-    # create an index from 0..Nf-1 to 0..Nc-1 when we apply the node mask or edge mask
-    map_c = np.empty(Nf, dtype=np.int32)
-    map_c[node_mask] = np.arange(Nc)
-
-    # map the <class> edges to be within range of 0..Nc-1 and make undirected
-    c_edges = map_c[E_face[edge_mask]]
-    e1, e2 = c_edges[:, 0], c_edges[:, 1]
-    e1, e2 = np.hstack((e1, e2)), np.hstack((e2, e1))
-    c_edges = np.stack((e1, e2), axis=1)
-    # get <class> nodes from 0..Nc-1
-    c_nodes = map_c[node_mask]
-
-    #### find all connected components in the <class> faces graph
-    components = trimesh.graph.connected_components(c_edges, min_len=0, nodes=c_nodes, engine='scipy')
-
-    map_a = np.argwhere(node_mask).flatten() # index to the original face indices
-    component_sizes = np.array([mesh.area_faces[map_a[c]].sum() for c in components])
-    #### flip labels where component_size < threshold (total triangle area)
-    components_to_flip = np.argwhere(component_sizes < threshold).flatten()
-    vertices = []
-    for ci in components_to_flip:
-        face_idx = map_a[components[ci]]
-        vertices.append(mesh.faces[face_idx].flatten())
-    if(len(vertices) > 0):
-        vertices = np.hstack(vertices)
-        vertices = np.unique(vertices)
-        mesh.vertex_attributes[key][vertices] = 1 - class_label
-
-def second_pass(mesh, attribute): # remove vertices which has no neighbour from same class
-    g = nx.from_edgelist(mesh.edges_unique)
-    one_ring = np.array([np.array(list(g[i].keys())) for i in range(len(mesh.vertices))])
-    labels = np.sort(np.unique(mesh.vertex_attributes[attribute]))
-    for c in labels:
-        Vc = np.where(mesh.vertex_attributes[attribute] == c)[0]
-        neighbours_per_vertex = one_ring[Vc]
-        tochange = np.argwhere(1 - np.array([np.any(mesh.vertex_attributes[attribute][neighbours_per_vertex[i]] == c) for i in range(len(Vc))]))
-        tochange = Vc[tochange]
-        mesh.vertex_attributes[attribute][tochange] = 1 - c
+def smoothMeshLabels(edges, labels, num_classes, threshold=16.0, faces=None, area_faces=None):
+    nodes = np.arange(len(labels))
+    # compute an area for each node
+    if faces is not None and area_faces is not None:
+        # use face areas to assign node weights
+        node_areas = np.zeros(len(nodes))
+        np.add.at(node_areas, faces[:, 0], area_faces/3)
+        np.add.at(node_areas, faces[:, 1], area_faces/3)
+        np.add.at(node_areas, faces[:, 2], area_faces/3)
+    else:
+        # equal weighting for every node
+        node_areas = np.ones(len(nodes))
+    
+    # determine connected components based on class and adjacency and assign each cluster to a 
+    # class label
+    edge_mask = (labels[edges[:,0]] == labels[edges[:,1]]) # edges where both nodes agree on class 
+    clusters = trimesh.graph.connected_components(edges[edge_mask], nodes=nodes) # clusters of connected vertices that have same class
+    num_clusters = len(clusters)
+    cluster_idx = np.zeros_like(nodes) # map each node to its cluster
+    cluster_label = np.zeros(num_clusters, dtype=np.int32) # the class label for each cluster
+    for i in range(num_clusters):
+        cluster = clusters[i]
+        cluster_idx[cluster] = i
+        cluster_label[i] = labels[cluster[0]]
+    
+    # compute an area for each cluster
+    cluster_areas = np.zeros(num_clusters)
+    np.add.at(cluster_areas, cluster_idx, node_areas)
+    
+    # determine cluster adjancency
+    e0 = cluster_idx[edges[~edge_mask, 0]]
+    e1 = cluster_idx[edges[~edge_mask, 1]]
+    c_edges = np.stack((e0,  e1), axis=1)
+    unq, _ = trimesh.grouping.unique_rows(c_edges)
+    c_edges = c_edges[unq]
+    
+    # for each cluster, compute total area of neighboring clusters by class
+    cluster_neighbor_areas = np.zeros((num_clusters, num_classes))
+    ind = (c_edges[:,0], cluster_label[c_edges[:,1]])
+    np.add.at(cluster_neighbor_areas, ind, cluster_areas[c_edges[:,1]])
+    
+    # for clusters below threshold, re-assign class to that of max neighboring class area
+    small = (cluster_areas < threshold)
+    small_labels = np.argmax(cluster_neighbor_areas[small], axis=1)
+    cluster_label[small] = small_labels
+    
+    # map cluster labels back to vertex labels
+    for i in range(num_clusters):
+        cluster = clusters[i]
+        labels[cluster] = cluster_label[i]
+    
+    return labels
