@@ -1,8 +1,9 @@
 # builtin modules
 import logging
+import json
 from os.path import join as ospj
 
-# third part modules
+# third party modules
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR, ExponentialLR
 from torch_geometric.nn import DataParallel
@@ -63,7 +64,7 @@ class Trainer(object):
         # variables to track training progress
         self.best_state = None
         self.best_state_metric = None
-        self.best_epoch = 0
+        self.best_epoch = None
         
         # set up scheduler
         if scheduler is not None:
@@ -77,7 +78,7 @@ class Trainer(object):
             self.model_name = self.model.name
         
         # history
-        self.metrics_history = {}
+        self.metrics_history = {'epochs': []}
     
     def log_histogram(self, tag, values, step, bins=1000):
         """Logs the histogram of a list/vector of values."""
@@ -165,11 +166,10 @@ class Trainer(object):
                         self.writer.add_scalar("train/batch_loss", loss, batch_count)
                 
                 ######### adding parameters of model to tensorboard ######
-                if((params_to_write is not None) and self.writer):
+                if (params_to_write is not None) and self.writer:
                     for name, param in self.model.named_parameters():
-                        for param_to_write in params_to_write:
-                            if ((param_to_write in name) and param.requires_grad):
-                                if(param.data.cpu().numpy().flatten().shape[0] == 1):
+                        if (name in params_to_write) and param.requires_grad:
+                            if(param.data.cpu().numpy().flatten().shape[0] == 1):
                                     self.writer.add_scalar(name, param.data.cpu().numpy()[0], self.batch_count)
                                     self.writer.add_scalar(name + "_grad", param.grad.cpu().numpy()[0], self.batch_count)
                                 elif(param.data.cpu().numpy().flatten().shape[0] <= 4):
@@ -180,7 +180,6 @@ class Trainer(object):
                                     self.log_histogram(name, param.data.cpu().numpy().flatten(), self.batch_count)
                                     self.log_histogram(name + "_grad", param.grad.cpu().numpy().flatten(), self.batch_count)
 
-                               #print (name, param.data, param.requires_grad, param.grad)
                 # update batch count
                 batch_count += 1
                 epoch_loss += loss
@@ -190,11 +189,11 @@ class Trainer(object):
             # compute metrics
             if (epoch % eval_every == 0) and (self.evaluator is not None):
                 metrics = {}
-                metrics['train'] = self.evaluator.getMetrics(dataset, use_mask=True, report_threshold=True)
+                metrics['train'] = self.evaluator.getMetrics(dataset, report_threshold=True)
                 metrics['train']['loss'] = epoch_loss/(n + 1e-5)
                 
                 if(validation_dataset is not None):
-                    metrics['validation'] = self.evaluator.getMetrics(validation_dataset, use_mask=True)
+                    metrics['validation'] = self.evaluator.getMetrics(validation_dataset)
                 
                 # report performance
                 if(not self.quiet):
@@ -212,21 +211,18 @@ class Trainer(object):
                             self.best_state_metric = state_metric
                             self.best_state = self.model.state_dict()
                             self.best_epoch = epoch
+                            self.metrics_history['best_epoch'] = epoch
                     elif best_state_metric_goal == 'min' and state_metric < best_state_metric_threshold:
                         if state_metric < self.best_state_metric:
                             self.best_state_metric = state_metric
                             self.best_state = self.model.state_dict()
                             self.best_epoch = epoch
+                            self.metrics_history['best_epoch'] = epoch
                 
             # checkpoint
             if checkpoint_every and (epoch % checkpoint_every == 0):
-                fname = ospj(self.checkpoint_path, "{}.{}.tar".format(self.model_name, epoch))
                 logging.info("Writing checkpoint to file {} at epoch {}".format(fname, epoch))
-                torch.save({
-                        'model_state_dict': self.model.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'epoch': epoch
-                    }, fname)
+                self.saveState(epoch, "{}.{}.tar".format(self.model_name, epoch))
         
         self.endTraining()
     
@@ -253,6 +249,10 @@ class Trainer(object):
         return loss.item()
     
     def updateHistory(self, metrics, epoch):
+        # update epoch
+        self.metrics_history['epochs'].append(epoch)
+        
+        # update tags/metrics
         for tag in metrics:
             if tag not in self.metrics_history:
                 self.metrics_history[tag] = {}
@@ -264,8 +264,29 @@ class Trainer(object):
                 
                 # add metric to history
                 if metric not in self.metrics_history[tag]:
-                    self.metrics_history[tag][metric] = {}
-                self.metrics_history[tag][metric][epoch] = metrics[tag][metric]
+                    self.metrics_history[tag][metric] = []
+                self.metrics_history[tag][metric].append(metrics[tag][metric])
+    
+    def getHistory(self, tag, metric, epoch):
+        if epoch == -1:
+            ind = -1
+        else:
+            ind = self.metrics_history['epochs'].index(epoch)
+        
+        return self.metrics_history[tag][metric][ind]
+    
+    def saveState(self, epoch, suffix, metrics=True, optimizer=True):
+        fname = ospj(self.checkpoint_path, suffix)
+        data = {
+            'model_state_dict': self.model.state_dict(),
+            'epoch': epoch
+        }
+        if metrics:
+            data['history'] = self.metrics_history
+        if optimizer:
+            data['optimizer_state_dict'] = self.optimizer.state_dict()
+        
+        torch.save(data, fname)
     
     def endTraining(self):
         """Stuff we want to do at the end of training"""
@@ -273,10 +294,12 @@ class Trainer(object):
         
         # Save best state to file if we kept it
         if self.best_state is not None:
-            fname = ospj(self.checkpoint_path, "{}.{}.tar".format(self.model_name, "best"))
             logging.info("Writing best state to file {} (epoch: {})".format(fname, self.best_epoch))
             logging.info("Best tracked metric achieved: {:.3f}".format(self.best_state_metric))
-            torch.save({
-                    'model_state_dict': self.best_state
-                }, fname)
-            
+            self.saveState(self.best_epoch, "{}.{}.tar".format(self.model_name, "best"), metrics=False, optimizer=False)
+        
+        # Save metrics history to file
+        logging.info("Saving metrics history to file.")
+        MH = open(ospj(self.checkpoint_path, "{}_metrics.json".format(self.model_name)), "w")
+        MH.write(json.dumps(self.metrics_history, indent=2))
+        MH.close()
