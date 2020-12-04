@@ -141,8 +141,8 @@ class Trainer(object):
                     for name, param in self.model.named_parameters():
                         if (name in params_to_write) and param.requires_grad:
                             if(param.data.cpu().numpy().flatten().shape[0] == 1):
-                                    self.writer.add_scalar(name, param.data.cpu().numpy()[0], batch_count)
-                                    self.writer.add_scalar(name + "_grad", param.grad.cpu().numpy()[0], batch_count)
+                                self.writer.add_scalar(name, param.data.cpu().numpy()[0], batch_count)
+                                self.writer.add_scalar(name + "_grad", param.grad.cpu().numpy()[0], batch_count)
                             elif(param.data.cpu().numpy().flatten().shape[0] <= 4):
                                 for i in range(1,param.data.cpu().numpy().flatten().shape[0] + 1):
                                     self.writer.add_scalar(name + "_" + str(i), param.data.cpu().numpy().flatten()[i-1], batch_count)
