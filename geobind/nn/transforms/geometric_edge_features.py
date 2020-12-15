@@ -21,9 +21,13 @@ class GeometricEdgeFeatures(object):
         mesh = to_trimesh(data)
         edge_index, edge_attr = getGeometricEdgeFeatures(mesh)
         
-        data.edge_attr = torch.tensor(edge_attr, dtype=torch.float32).to(data.x.device)
+        if data.x is not None:
+            device = data.x.device
+        else:
+            device = data.edge_index.device
+        data.edge_attr = torch.tensor(edge_attr, dtype=torch.float32).to(device)
         if self.assign_edges:
-            data.edge_index = torch.tensor(edge_index.T, dtype=torch.int64).to(data.x.device)
+            data.edge_index = torch.tensor(edge_index.T, dtype=torch.int64).to(device)
         
         return data
     
