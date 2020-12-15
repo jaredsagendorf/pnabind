@@ -27,15 +27,15 @@ def getPPFeatures(mesh, edge_index, edge_attr=None):
 
 def getGeometricEdgeFeatures(mesh, directed_edges=True):
 
-    #assert np.all(mesh.edges_unique == mesh.face_adjacency_edges)
-    if not np.all(mesh.edges_unique == mesh.face_adjacency_edges):
-        trimesh.repair.fill_holes(mesh)
-        print(mesh.is_watertight)
-        print("edges_unique:", mesh.edges_unique.shape)
-        print("face_adjaceny_edges:", mesh.face_adjacency_edges.shape)
-        print(mesh.edges.T)
-        mesh.export("mesh_error.off")
-        exit(0)
+    assert np.all(mesh.edges_unique == mesh.face_adjacency_edges)
+    #if not np.all(mesh.edges_unique == mesh.face_adjacency_edges):
+        #trimesh.repair.fill_holes(mesh)
+        #print(mesh.is_watertight)
+        #print("edges_unique:", mesh.edges_unique.shape)
+        #print("face_adjaceny_edges:", mesh.face_adjacency_edges.shape)
+        #print(mesh.edges.T)
+        #mesh.export("mesh_error.off")
+        #exit(0)
     
     # get undirected edge features derived from adjacent faces
     edge_attr = [
