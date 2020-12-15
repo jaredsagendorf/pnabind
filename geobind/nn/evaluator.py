@@ -51,7 +51,7 @@ class Evaluator(object):
                     'precision': {'average': 'binary', 'zero_division': 0},
                     'recall': {'average': 'binary', 'zero_division': 0},
                     'accuracy': {},
-                    'smoothness': {'method': 'weighted_vertex'}
+                    #'smoothness': {'method': 'weighted_vertex'}
                 }
             elif nc > 2:
                 # three or more classes 
@@ -65,7 +65,7 @@ class Evaluator(object):
                     'recall': {'average': 'weighted', 'zero_division': 0, 'labels': labels},
                     'accuracy': {},
                     'matthews_corrcoef': {},
-                    'smoothness': {'method': 'weighted_vertex'}
+                    #'smoothness': {'method': 'weighted_vertex'}
                 }
             else:
                 # TODO - assume regression
@@ -216,13 +216,14 @@ class Evaluator(object):
                 smooth_pr.append(METRICS_FN["smoothness"](y_pr[slc], edge_index, **self.metrics['smoothness']))
             ptr += batch.num_nodes
         
-        smooth_pr = np.mean(smooth_pr)
-        smooth_gt = np.mean(smooth_gt)
-        metric_values['smoothness'] = smooth_pr
-        metric_values['smoothness_relative'] = (smooth_pr - smooth_gt)/smooth_gt
+        if "smoothness" in self.metrics:
+            smooth_pr = np.mean(smooth_pr)
+            smooth_gt = np.mean(smooth_gt)
+            metric_values['smoothness'] = smooth_pr
+            metric_values['smoothness_relative'] = (smooth_pr - smooth_gt)/smooth_gt
         
         return metric_values
-        
+    
     def predictClass(self, outs, y_gt=None, metrics_dict=None, threshold=None, threshold_metric='balanced_accuracy', report_threshold=False):
         # Decide how to determine `y_pr` from `outs`
         if self.nc == 2:
