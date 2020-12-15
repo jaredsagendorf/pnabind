@@ -11,7 +11,7 @@ from torch_geometric.utils import softmax
 from torch_geometric.nn import EdgePooling
 from torch_geometric.data import Data
 
-import trimesh
+#import trimesh
 
 class Decimator(object):
     @staticmethod
@@ -68,7 +68,7 @@ class Decimator(object):
         
         return vij, costs
     
-    def __init__(self, data, edge_scores, check_manifold=True, normalize_costs=True):
+    def __init__(self, data, edge_scores, check_manifold=True, normalize_costs=True, alpha=None):
         # Get basic numpy arrays we will need
         self.V = data.pos.cpu().numpy()
         self.F = data.face.cpu().numpy().T
@@ -80,18 +80,19 @@ class Decimator(object):
         face_normals = np.cross(vec1, vec2, axis=1)
         self.N = face_normals/np.linalg.norm(face_normals, axis=1)[:,np.newaxis] # [F, 3]
         
-        edge_scores = edge_scores.cpu().detach().numpy()
+        if edge_scores is not None:
+            edge_scores = edge_scores.cpu().detach().numpy()
         
         self.num_vertices = len(self.V)
         self.num_faces = len(self.F)
         self.num_edges = len(self.E)
-    
+        
         # Compute quadratic error metrics
         self.Q = self.computeErrorMetrics(self.V, self.F, self.N)
         self.V = np.concatenate([self.V, np.ones((self.num_vertices, 1))], axis=1) # add column of ones
         
         # Compute costs of edges
-        self.Vopt, self.edge_costs = self.computePairCost(self.E, self.Q, self.V, edge_scores, normalize_costs=normalize_costs)
+        self.Vopt, self.edge_costs = self.computePairCost(self.E, self.Q, self.V, edge_scores, normalize_costs=normalize_costs, alpha=alpha)
         
         if check_manifold:
             # construct vertex-vertex adjacency
@@ -198,7 +199,8 @@ class Decimator(object):
         #emask = (E == source)
         #E[emask[:,0], 0] = target
         #E[emask[:,1], 1] = target
-        self.mergeVertices(source, target)
+        if self.check_manifold:
+            self.mergeVertices(source, target)
         
         #ei = np.argwhere(np.bitwise_or.reduce(emask, axis=1)).flatten()
         #ei, fi = mesh.mergeNodes(source, target)
@@ -248,7 +250,7 @@ class PriorityQueue(object):
 
 class MeshPooling(EdgePooling):
     def __init__(self, in_channels, edge_dim,
-            dropout=0.0, pre_transform=None, post_transform=None, aggr="diff",
+            dropout=0.0, pre_transform=None, post_transform=None, aggr="diff", alpha=-1.0,
             check_normals=False, check_manifold=False, edge_score_method=None, add_to_edge_score=0.5
         ):
         super().__init__(in_channels,
@@ -262,60 +264,62 @@ class MeshPooling(EdgePooling):
         self.aggr = aggr
         self.check_normals = check_normals
         self.check_manifold = check_manifold
+        self.alpha = alpha
         
         # edge feature transforms
         self.pre_transform = pre_transform
         self.post_transform = post_transform
         
         # learnable parameters
-        if aggr == "cat":
-            self.lin = torch.nn.Linear(2*in_channels + edge_dim, 1)
-        else:
-            self.lin = torch.nn.Linear(in_channels + edge_dim, 1)
-        self.reset_parameters()
-
+        if alpha is not None:
+            if aggr == "cat":
+                self.lin = torch.nn.Linear(2*in_channels + edge_dim, 1)
+            else:
+                self.lin = torch.nn.Linear(in_channels + edge_dim, 1)
+            self.reset_parameters()
     
-    def forward(self, data):
+    def forward(self, x, data):
         if self.pre_transform:
             data = self.pre_transform(data)
-        assert data.mesh is not None # we require this in order to perfom efficient decimation
         
-        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        edge_index, edge_attr = data.edge_index, data.edge_attr
         
-        # compute the edge scores
-        if self.aggr == "diff":
-            e = torch.cat([torch.abs(x[edge_index[0]] - x[edge_index[1]]), edge_attr], dim=-1)
-        elif self.aggr == "mean":
-            e = torch.cat([(x[edge_index[0]] + x[edge_index[1]])/2, edge_attr], dim=-1)
-        elif self.aggr == "sum":
-            e = torch.cat([(x[edge_index[0]] + x[edge_index[1]]), edge_attr], dim=-1)
-        elif self.aggr == "max":
-            e = torch.cat([torch.maximum(x[edge_index[0]], x[edge_index[1]]), edge_attr], dim=-1)
-        elif self.aggr == "cat":
-            e = torch.cat([x[edge_index[0]], x[edge_index[1]], edge_attr], dim=-1)
+        if self.alpha is not None:
+            # compute the edge scores
+            if self.aggr == "diff":
+                e = torch.cat([torch.abs(x[edge_index[0]] - x[edge_index[1]]), edge_attr], dim=-1)
+            elif self.aggr == "mean":
+                e = torch.cat([(x[edge_index[0]] + x[edge_index[1]])/2, edge_attr], dim=-1)
+            elif self.aggr == "sum":
+                e = torch.cat([(x[edge_index[0]] + x[edge_index[1]]), edge_attr], dim=-1)
+            elif self.aggr == "max":
+                e = torch.cat([torch.maximum(x[edge_index[0]], x[edge_index[1]]), edge_attr], dim=-1)
+            elif self.aggr == "cat":
+                e = torch.cat([x[edge_index[0]], x[edge_index[1]], edge_attr], dim=-1)
+            else:
+                raise ValueError("Unsupported option '{}' for aggregation method.".format(self.aggr))
+            
+            e = self.lin(e).view(-1)
+            e = F.dropout(e, p=self.dropout, training=self.training)
+            e = self.compute_edge_score(e, edge_index, x.size(0))
+            e = e + self.add_to_edge_score
         else:
-            raise ValueError("Unsupported option '{}' for aggregation method.".format(self.aggr))
-        
-        e = self.lin(e).view(-1)
-        e = F.dropout(e, p=self.dropout, training=self.training)
-        e = self.compute_edge_score(e, edge_index, x.size(0))
-        e = e + self.add_to_edge_score
+            e = None
         
         # perform mesh decimation
-        new_data = self.__merge_edges__(data, e)
+        new_x, new_data = self.__merge_edges__(x, data, e)
         if self.post_transform:
             new_data = self.post_transform(new_data)
         
-        return new_data
+        return new_x, new_data
     
-    def __merge_edges__(self, data, edge_score):
+    def __merge_edges__(self, x, data, edge_score):
         # Torch tensors
-        x = data.x
         batch = data.batch
         edge_index = data.edge_index
         
         # Get mesh decimator object
-        decimator = Decimator(data, edge_score, check_manifold=self.check_manifold)
+        decimator = Decimator(data, edge_score, check_manifold=self.check_manifold, alpha=self.alpha)
 
         # Build a priority queue to store edge costs and store which nodes are still valid
         PQ = PriorityQueue([(decimator.edge_costs[i], i) for i in range(decimator.num_edges)])
@@ -327,9 +331,6 @@ class MeshPooling(EdgePooling):
         i = 0
         while len(PQ) > 0:
             ei = PQ.popItem()
-            #if ei is None:
-                ## the queue is empty
-                #break
             
             # check if nodes have already been merged
             source, target = decimator.E[ei]
@@ -360,13 +361,16 @@ class MeshPooling(EdgePooling):
         
         # We compute the new features as an addition of the old ones.
         new_x = scatter_add(x, cluster, dim=0, dim_size=i)
-        new_edge_score = edge_score[new_edge_indices]
-        if len(nodes_remaining) > 0:
-            remaining_score = x.new_ones(
-                (new_x.size(0) - len(new_edge_indices), )
-            )
-            new_edge_score = torch.cat([new_edge_score, remaining_score])
-        new_x = new_x * new_edge_score.view(-1, 1)
+        if edge_score is not None:
+            new_edge_score = edge_score[new_edge_indices]
+            if len(nodes_remaining) > 0:
+                remaining_score = x.new_ones(
+                    (new_x.size(0) - len(new_edge_indices), )
+                )
+                new_edge_score = torch.cat([new_edge_score, remaining_score])
+            new_x = new_x * new_edge_score.view(-1, 1)
+        else:
+            new_edge_score = x.new_ones((new_x.size(0), ))
         
         N = new_x.size(0)
         new_edge_index, _ = coalesce(cluster[edge_index], None, N, N)
@@ -386,7 +390,7 @@ class MeshPooling(EdgePooling):
         #vi[cluster] = torch.arange(cluster.size(0))
         #new_pos = data.pos[vi][:,0:3]
         vi = np.empty(i, dtype=np.int64)
-        vi[cluster.numpy()] = np.arange(decimator.num_vertices)
+        vi[cluster.cpu().numpy()] = np.arange(decimator.num_vertices)
         new_pos = torch.tensor(decimator.V[vi][:,0:3])
         
         # update faces
@@ -397,7 +401,7 @@ class MeshPooling(EdgePooling):
         fi = (new_face[0,:] == new_face[1,:]) + (new_face[0,:] == new_face[2,:]) + (new_face[1,:] == new_face[2,:]) # faces with duplicate vertices
         new_face = new_face[:,~fi] # remove duplicates
         
-        new_data = Data(x=new_x, edge_index=new_edge_index, batch=new_batch, pos=new_pos, face=new_face)
+        new_data = Data(edge_index=new_edge_index, batch=new_batch, pos=new_pos, face=new_face)
         new_data.unpool_info = unpool_info
         
-        return new_data
+        return new_x, new_data
