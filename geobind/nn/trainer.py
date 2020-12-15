@@ -2,6 +2,7 @@
 import logging
 import json
 from os.path import join as ospj
+from collections import OrderedDict
 
 # third party modules
 import torch
@@ -183,8 +184,8 @@ class Trainer(object):
                 
             # checkpoint
             if checkpoint_every and (epoch % checkpoint_every == 0):
+                fname = self.saveState(epoch, "{}.{}.tar".format(self.model_name, epoch))
                 logging.info("Writing checkpoint to file {} at epoch {}".format(fname, epoch))
-                self.saveState(epoch, "{}.{}.tar".format(self.model_name, epoch))
         
         self.endTraining()
     
@@ -239,8 +240,15 @@ class Trainer(object):
     
     def saveState(self, epoch, suffix, metrics=True, optimizer=True):
         fname = ospj(self.checkpoint_path, suffix)
+        
+        # remove 'module' prefix from state_dict entries
+        new_state_dict = OrderedDict()
+        for k, v in self.model.state_dict().items():
+            name = k.replace("module.", "") # remove 'module.' prefix
+            new_state_dict[name] = v
+        
         data = {
-            'model_state_dict': self.model.state_dict(),
+            'model_state_dict': new_state_dict,
             'epoch': epoch
         }
         if metrics:
@@ -249,6 +257,8 @@ class Trainer(object):
             data['optimizer_state_dict'] = self.optimizer.state_dict()
         
         torch.save(data, fname)
+        
+        return fname
     
     def endTraining(self):
         """Stuff we want to do at the end of training"""
@@ -256,9 +266,9 @@ class Trainer(object):
         
         # Save best state to file if we kept it
         if self.best_state is not None:
+            fname = self.saveState(self.best_epoch, "{}.{}.tar".format(self.model_name, "best"), metrics=False, optimizer=False)
             logging.info("Writing best state to file {} (epoch: {})".format(fname, self.best_epoch))
             logging.info("Best tracked metric achieved: {:.3f}".format(self.best_state_metric))
-            self.saveState(self.best_epoch, "{}.{}.tar".format(self.model_name, "best"), metrics=False, optimizer=False)
         
         # Save metrics history to file
         logging.info("Saving metrics history to file.")
