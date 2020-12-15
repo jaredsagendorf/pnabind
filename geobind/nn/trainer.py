@@ -48,7 +48,7 @@ class Trainer(object):
     def __init__(self, model, nc, optimizer, criterion, 
             device='cpu', scheduler=None, evaluator=None, 
             writer=None, checkpoint_path='.', quiet=True
-    ):
+            ):
         # parameters
         self.model = model
         self.nc = nc
@@ -79,12 +79,12 @@ class Trainer(object):
         # history
         self.metrics_history = {'epochs': []}
     
+   
     def train(self, nepochs, dataset,
         validation_dataset=None, batch_loss_every=4, eval_every=2, debug=False,
         checkpoint_every=None, optimizer_kwargs={}, scheduler_kwargs={},
         best_state_metric=None, best_state_metric_threshold=None, 
-        best_state_metric_dataset='validation', best_state_metric_goal='max',
-        params_to_write = None
+        best_state_metric_dataset='validation', best_state_metric_goal='max', params_to_write=None
     ):
         # begin training
         if not self.quiet:
@@ -136,13 +136,22 @@ class Trainer(object):
                     if self.writer:
                         self.writer.add_scalar("train/batch_loss", loss, batch_count)
                 
-                # adding scalar paramters of model to tensorboard
+                ######### adding parameters of model to tensorboard ######
                 if (params_to_write is not None) and self.writer:
                     for name, param in self.model.named_parameters():
                         if (name in params_to_write) and param.requires_grad:
-                            self.writer.add_scalar(name, param.data.cpu().numpy()[0], batch_count)
-                            self.writer.add_scalar(name + "_grad", param.grad.cpu().numpy()[0], batch_count)
-                
+                            if(param.data.cpu().numpy().flatten().shape[0] == 1):
+                                self.writer.add_scalar(name, param.data.cpu().numpy()[0], batch_count)
+                                self.writer.add_scalar(name + "_grad", param.grad.cpu().numpy()[0], batch_count)
+                            elif(param.data.cpu().numpy().flatten().shape[0] <= 4):
+                                for i in range(1,param.data.cpu().numpy().flatten().shape[0] + 1):
+                                    self.writer.add_scalar(name + "_" + str(i), param.data.cpu().numpy().flatten()[i-1], batch_count)
+                                    self.writer.add_scalar(name + "_grad_" + str(i), param.grad.cpu().numpy().flatten()[i-1], batch_count)
+                            else:
+                                self.writer.add_histogram(name, param.data.cpu().numpy().flatten(), batch_count)
+                                self.writer.add_histogram(name + "grad", param.grad.cpu().numpy().flatten(), batch_count)
+                                self.writer.flush()  ## remove this line, if results in slowdown, flush only at end
+
                 # update batch count
                 batch_count += 1
                 epoch_loss += loss
