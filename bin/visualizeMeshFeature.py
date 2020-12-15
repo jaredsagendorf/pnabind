@@ -46,7 +46,7 @@ multiclass_colors = np.array([
     [1.00, 0.00, 0.00] # 7: red (false prediction)
 ])
 
-def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, max_width=4, shift_axis='x', **kwargs):
+def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, save=True, max_width=4, shift_axis='x', **kwargs):
     # figure out where to get color information
     if(data is None and colors is None):
         # just visualize the mesh geometry
@@ -79,9 +79,11 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_m
         m = mesh.copy()
         m.apply_translation(offset*shift)
         m.visual.vertex_colors = vertex_colors[i] 
-        offset += m.bounding_box.extents[si]
+        offset += 1.1*m.bounding_box.extents[si]
         scene.append(m)
     print("returning scene")
+    if save and len(scene) == 1:
+        scene[0].export("mesh.ply")#, encoding="ascii")
     return trimesh.Scene(scene).show(**kwargs)
 
 def getDataArrays(INP):
@@ -90,7 +92,7 @@ def getDataArrays(INP):
         if inp in data:
             arrays.append(data[inp])
         else:
-            m = re.match("(w+)(d*)", inp)
+            m = re.match("([A-Za-z]+)(\d*)", inp)
             if m:
                 i = int(m.group(2))
                 key = m.group(1)
@@ -158,6 +160,7 @@ Enter one of the following:
     m to visualize only the mesh
     c to compare two data fields
     q to exit
+    s to selected scene as a .ply file
     a list of data fields, separated by space (e.g. "X1 X2 Y")
 :""".strip()
 

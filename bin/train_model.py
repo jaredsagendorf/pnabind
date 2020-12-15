@@ -63,11 +63,11 @@ from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures
 # Geobind modules
 from geobind.nn.utils import loadDataset, classWeights
 from geobind.nn import Trainer, Evaluator
-from geobind.nn.models import NetConvEdgePool, PointNetPP, MultiBranchNet
+from geobind.nn.models import NetConvPool, PointNetPP, MultiBranchNet
 from geobind.nn.metrics import reportMetrics
+from geobind.nn.transforms import GeometricEdgeFeatures, ScaleEdgeFeatures
 
 ####################################################################################################
-
 # Load the config file
 defaults = {
     "no_random": False,
@@ -98,7 +98,6 @@ for key, val in defaults.items():
 for key, val in vars(ARGS).items():
     if val is not None:
         C[key] = val
-print(C)
 
 # Set random seed or not
 if C["no_random"] or C["debug"]:
@@ -145,17 +144,17 @@ else:
 
 ####################################################################################################
 ### Load training/validation data ##################################################################
-
 train_datafiles = [_.strip() for _ in open(ARGS.train_file).readlines()]
 valid_datafiles = [_.strip() for _ in open(ARGS.valid_file).readlines()]
 
 remove_mask = (C["balance"] == 'all')
+transform = Compose([GeometricEdgeFeatures(), ScaleEdgeFeatures(method=C["model"]["kwargs"].get("scale_edge_features", None))])
 train_dataset, transforms, train_info = loadDataset(train_datafiles, C["nc"], C["labels_key"], C["data_dir"],
         cache_dataset=C.get("cache_dataset", False),
         balance=C["balance"],
         remove_mask=remove_mask,
         scale=True,
-        pre_transform=Compose([FaceToEdge(remove_faces=False), PointPairFeatures(cat=True)])
+        pre_transform=transform
     )
 valid_dataset, _, valid_info = loadDataset(valid_datafiles, C["nc"], C["labels_key"], C["data_dir"],
         cache_dataset=C.get("cache_dataset", False),
@@ -175,11 +174,10 @@ else:
     DL_vl = DataListLoader(valid_dataset, batch_size=1, shuffle=False, pin_memory=True)
 
 ####################################################################################################
-
 # Create the model we'll be training.
 nF = train_info['num_features']
-if C["model"]["name"] == "NetConvEdgePool":
-    model = NetConvEdgePool(nF, C['nc'], **C["model"]["kwargs"])
+if C["model"]["name"] == "NetConvPool":
+    model = NetConvPool(nF, C['nc'], **C["model"]["kwargs"])
 elif C["model"]["name"] == "PointNetPP":
     model = PointNetPP(nF, C['nc'], **C["model"]["kwargs"])
 elif C["model"]["name"] == "MultiBranchNet":
@@ -228,7 +226,6 @@ criterion = torch.nn.functional.cross_entropy
 
 ####################################################################################################
 ### Do the training ################################################################################
-
 evaluator = Evaluator(model, C["nc"], device=device, post_process=torch.nn.Softmax(dim=-1))
 trainer = Trainer(model, C["nc"], optimizer, criterion, device, scheduler, evaluator,
     checkpoint_path=run_path,
@@ -263,7 +260,6 @@ trainer.train(C["epochs"], DL_tr, DL_vl,
     best_state_metric_goal=C["best_state_metric_goal"],
     params_to_write=["module.crf1.log_alpha", "module.crf1.log_beta", "module.crf1.log_sigmasq"]
 )
-
 
 # Write final training predictions to file
 if C["write"]:
