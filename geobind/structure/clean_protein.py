@@ -133,6 +133,13 @@ class ResidueMutator(object):
             # has no standard parent field - can't be modified
             return False
 
+def heavyAtomCount(residue):
+    count = 0
+    for atom in residue:
+        if atom.element != "H":
+            count += 1
+    return count
+
 def cleanProtein(
         structure, mutator=None, regexes=None, hydrogens=True, pdb2pqr=True,
         replace_hydrogens=False, add_charge_radius=True, keepPQR=True, min_radius=0.6
@@ -152,19 +159,24 @@ def cleanProtein(
         remove = []
         for residue in chain:
             resn = residue.get_resname().strip()
-            if(mutator.standard(resn)):
+            resid = residue.get_id()
+            if heavyAtomCount(residue)/(data.chem_components[resn]['heavy_atom_count']-1) < 0.5:
+                # too many missing atoms
+                remove.append( (resid, "remove residue, too many missing atoms: %s") )
+            elif(mutator.standard(resn)):
                 continue
             elif(resn == 'HOH' or resn == 'WAT'):
-                remove.append(residue.get_id())
+                remove.append( (resid, None) )
             elif(regexes["SOLVENT_COMPONENTS"].search(resn)):
                 continue
             elif(mutator.modified(resn)):
-                replace.append(residue.get_id())
+                replace.append(resid)
             else:
-                remove.append(residue.get_id())
+                remove.append( (resid, "removed unrecognized residue: %s") )
         
-        for rid in remove:
-            logging.info("removed unrecognized residue: %s", chain[rid].get_resname())
+        for rid, reason in remove:
+            if reason is not None:
+                logging.info(reason, chain[rid].get_resname())
             chain.detach_child(rid)
         
         for rid in replace:
