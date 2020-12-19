@@ -8,6 +8,7 @@ from scipy.spatial import cKDTree
 
 # geobind modules
 from geobind.structure.data import data
+from geobind.mesh import smoothMeshLabels
 
 class AtomToClassMapper(object):
     def __init__(self, ligand_info, default=None, name="LIGANDS"):
@@ -123,7 +124,7 @@ def segmentsIntersectTriangles(s, t):
     # s[i][:, np.newaxis] - t[j] -> S x T x 3 array
     sign1 = np.sign(np.sum(normals*(s[0][:, np.newaxis] - t[2]), axis=2)) # S x T
     sign2 = np.sign(np.sum(normals*(s[1][:, np.newaxis] - t[2]), axis=2)) # S x T
-        
+    
     # determine segments which cross the plane of a triangle. 1 if the sign of the end points of s is 
     # different AND one of end points of s is not a vertex of t
     cross = (sign1 != sign2)*(sign1 != 0)*(sign2 != 0) # S x T 
@@ -180,7 +181,7 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
     
     if smooth:
         # smooth labels using a smoothing scheme
-        pass
+        Y = smoothMeshLabels(mesh.edges, Y, nc, faces=mesh.faces, area_faces=mesh.area_faces, threshold=50.0)
     
     if mask :
         # mask the boundaries of any binding region

@@ -122,7 +122,7 @@ class Mesh(object):
             self.__reset()
     
     @property
-    def areas_faces(self):
+    def area_faces(self):
         return self.mesh.area_faces
     
     @property
