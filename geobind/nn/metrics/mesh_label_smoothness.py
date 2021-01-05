@@ -3,7 +3,22 @@
 
 # third-party modules
 import numpy as np
-import networkx as nx
+
+class Graph:   #store a graph in adjacency list form     
+    def __init__(self, vertices):
+        self.V = vertices
+        self.adj_list = [[] for i in range(self.V.shape[0])]
+                                    
+    def add_edges(self, edges):     
+        src = edges[:,0]
+        dest = edges[:,1]
+        for i in range(src.shape[0]):
+            self.adj_list[src[i]].append(dest[i])
+            self.adj_list[dest[i]].append(src[i])
+                      
+    def list_one_ring(self):
+        return np.array(self.adj_list)
+
 
 def meshLabelSmoothness(labels, edge_index, pos=None, method="weighted_vertex"):
     
@@ -30,8 +45,9 @@ def meshLabelSmoothness(labels, edge_index, pos=None, method="weighted_vertex"):
         '''For each class calculate 
             (number of vertices with all neighbours from same class / total number of members of that class), 
             return average over all classes'''    
-        g = nx.from_edgelist(edge_index) 
-        one_ring = np.array([np.array(list(g[i].keys())) for i in range(len(labels))])
+        graph = Graph(np.unique(edge_index))
+        graph.add_edges(edge_index)
+        one_ring = graph.list_one_ring()
         classes = np.sort(np.unique(labels))
         total = 0
         for c in classes:
@@ -43,14 +59,16 @@ def meshLabelSmoothness(labels, edge_index, pos=None, method="weighted_vertex"):
             Sa += Sa_temp
             total += (Sa_temp/len(Vc))
         
-        return total/len(labels)
+        return total/len(classes)
     
     elif(method == "weighted_vertex"):
         '''For each class calculate 
                 (number of vertices with all neighbours from same class / class size), 
                 return average over all classes weighted by inverse of class size'''
-        g = nx.from_edgelist(edge_index)
-        one_ring = np.array([np.array(list(g[i].keys())) for i in range(len(labels))])
+        graph = Graph(np.unique(edge_index))
+        graph.add_edges(edge_index)
+        one_ring = graph.list_one_ring()
+
         classes = np.sort(np.unique(labels))
         wt_total = 0
         denom = 0
