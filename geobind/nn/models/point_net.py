@@ -91,19 +91,20 @@ class PointNetPP(torch.nn.Module):
             max_neighbors=64,
             knn_num=3,
             name='pointnet_pp',
-            lin=True,
-            crf=False
+            use_lin=True,
+            use_crf=False
         ):
         super(PointNetPP, self).__init__()
         ### Set up ###
         self.depth = depth
         self.name = name
         self.conv_name = conv_args["name"]
-        self.lin = lin
-        self.crf = crf
+        self.lin = use_lin
+        self.crf = use_crf
         if ratios is None:
             ratios = [0.5]*depth
         assert len(ratios) == depth
+        
         if radii is None:
             radii = [2.0]*depth
         assert len(radii) == depth
@@ -126,15 +127,17 @@ class PointNetPP(torch.nn.Module):
         for i in range(depth):
             self.SA_modules.append(SAModule(nhidden, nhidden, conv_args, ratios[i], radii[i], max_neighbors=max_neighbors))
             self.FP_modules.append(FPModule(nhidden, nhidden, nhidden, k=knn_num))
+        self.nout = nhidden
         
-        if crf:
+        if use_crf:
             self.crf1 = ContinuousCRF(**crf_args)
             
         # linear layers
-        if lin:
+        if use_lin:
             self.lin2 = torch.nn.Linear(nhidden, nhidden)
             self.lin3 = torch.nn.Linear(nhidden, nhidden)
             self.lin4 = torch.nn.Linear(nhidden, nOut)
+            self.nout = nOut
     
     def forward(self, data):
         # lin1

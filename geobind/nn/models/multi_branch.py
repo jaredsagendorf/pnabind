@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # geobind modules
-from geobind.nn.models import NetConvEdgePool, PointNetPP
+from geobind.nn.models import NetConvPool, PointNetPP
 from geobind.nn.layers import ContinuousCRF
 
 class MultiBranchNet(torch.nn.Module):
@@ -14,7 +14,7 @@ class MultiBranchNet(torch.nn.Module):
             kwargs1=None,
             kwargs2=None,
             name='multi_branch_net',
-            crf=False,
+            use_crf=False,
             crf_args={}
     ):
         super(MultiBranchNet, self).__init__()
@@ -25,15 +25,15 @@ class MultiBranchNet(torch.nn.Module):
         elif(act == 'selu'):
             self.act = F.selu
         self.name = name
-        self.crf = crf
+        self.crf = use_crf
         
-        self.branch1 = PointNetPP(nIn, lin=False, nhidden=nhidden, **kwargs1)
-        self.branch2 = NetConvEdgePool(nIn, lin=False, nhidden=nhidden, **kwargs2)
+        self.branch1 = PointNetPP(nIn, use_lin=False, **kwargs1)
+        self.branch2 = NetConvPool(nIn, use_lin=False, **kwargs2)
         
-        if crf:
+        if use_crf:
             self.crf1 = ContinuousCRF(**crf_args)
         
-        self.lin1 = nn.Linear(2*nhidden, nhidden)
+        self.lin1 = nn.Linear(self.branch1.nout + self.branch2.nout, nhidden)
         self.lin2 = nn.Linear(nhidden, nhidden)
         self.lin3 = nn.Linear(nhidden, nOut)
     

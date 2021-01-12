@@ -27,7 +27,6 @@ class NetConvPool(torch.nn.Module):
             use_skips=True,
             #sum_skips=False,
             dropout=0.5,
-            edge_dim=9,
             name='net_conv_pool',
             use_lin=True,
             use_crf=False,
@@ -41,7 +40,6 @@ class NetConvPool(torch.nn.Module):
         self.num_top_convs = num_top_convs
         self.num_pool_convs = num_pool_convs
         self.num_unpool_convs = num_unpool_convs
-        self.edge_dim = edge_dim
         self.name = name
         self.lin = use_lin
         self.crf = use_crf
@@ -56,15 +54,19 @@ class NetConvPool(torch.nn.Module):
         else:
             self.act = act # assume we are passed a function
         
-        # determine convolution and pooling types
+        # determine pooling types
         if depth > 0:
             self.pool_type = pool_args["name"]
         
         # build transforms
         if self.pool_type == "MeshPool":
+            self.edge_dim = 9
             transforms = [GeometricEdgeFeatures()]
-        else:
+        elif self.pool_type == "EdgePool":
+            self.edge_dim = 4
             transforms = [GenerateMeshNormals(), PointPairFeatures()]
+        else:
+            raise ValueError("Unknown pooling type: {}".format(self.pool_type))
         
         if scale_edge_features:
             transforms.append(ScaleEdgeFeatures(method=scale_edge_features))
@@ -94,7 +96,7 @@ class NetConvPool(torch.nn.Module):
         nin = nhidden_lin
         nout = level_hidden_size_down[0]
         for i in range(num_top_convs):
-            self.top_convs.append(GMMConv(nin, nout, edge_dim, conv_args["kernel_size"]))
+            self.top_convs.append(GMMConv(nin, nout, self.edge_dim, conv_args["kernel_size"]))
             nin = nout
         
         # down layers
@@ -106,7 +108,7 @@ class NetConvPool(torch.nn.Module):
             
             # convolution
             for j in range(num_pool_convs):
-                self.down_convs.append(GMMConv(nin, nout, edge_dim, conv_args["kernel_size"]))
+                self.down_convs.append(GMMConv(nin, nout, self.edge_dim, conv_args["kernel_size"]))
                 nin = nout
         
         # up layers
@@ -117,8 +119,9 @@ class NetConvPool(torch.nn.Module):
             
             # convolution
             for k in range(num_unpool_convs):
-                self.up_convs.append(GMMConv(nin, nout, edge_dim, conv_args["kernel_size"]))
+                self.up_convs.append(GMMConv(nin, nout, self.edge_dim, conv_args["kernel_size"]))
                 nin = nout
+        self.nout = nout
         
         if use_crf:
             # continuous CRF layer
@@ -129,6 +132,7 @@ class NetConvPool(torch.nn.Module):
             self.lin2 = nn.Linear(nout, nout)
             self.lin3 = nn.Linear(nout, nout)
             self.lin4 = nn.Linear(nout, nOut)
+            self.nout = nOut
     
     def makePool(self, nin, name=None, **kwargs):
         if name == "EdgePool":
