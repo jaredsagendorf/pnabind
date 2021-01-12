@@ -209,7 +209,7 @@ class Evaluator(object):
         smooth_pr = []
         ptr = 0
         for batch in batches:
-            edge_index = batch.edge_index.numpy()
+            edge_index = batch.edge_index.cpu().numpy()
             slc = slice(ptr, ptr + batch.num_nodes)
             if "smoothness" in self.metrics:
                 smooth_gt.append(METRICS_FN["smoothness"](y_gt[slc], edge_index, **self.metrics['smoothness']))
