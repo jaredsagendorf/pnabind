@@ -25,8 +25,8 @@ arg_parser.add_argument("-d", "--debug", action='store_true', default=False,
                 help="write additional information")
 arg_parser.add_argument("-l", "--ligand_list", dest="ligand_list", nargs="+",
                 help="a list of ligand identifiers")
-arg_parser.add_argument("-n", "--ligand_list_name",
-                help="a name for the ligand set")
+arg_parser.add_argument("-y", "--label_set_name",
+                help="a name for the label set")
 ARGS = arg_parser.parse_args()
 
 # builtin modules
@@ -88,7 +88,11 @@ def main():
             atom_mapper = AtomToClassMapper(C["LIGAND_LIST"], default=0, name=C.get("LIGAND_SET_NAME", "LIGANDS"))
         elif "MOIETY_LABEL_SET_NAME" in C:
             atom_mapper = AtomToClassMapper(C["MOIETY_LABEL_SET_NAME"])
-        label_names = "Y_{}".format(atom_mapper.name)
+        
+        if ARGS.label_set_name:
+            label_names = ARGS.label_set_name
+        else:
+            label_names = "Y_{}".format(atom_mapper.name)
     
     ### Load the interface file which describes a list of DNA-protein interfaces to process ########
     listFile = ARGS.structures_file
