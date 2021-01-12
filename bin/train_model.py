@@ -17,6 +17,7 @@ arg_parser.add_argument("--no_write", action="store_false", default=None, dest="
 arg_parser.add_argument("--write_test_predictions", action="store_true", default=None,
                 help="If set will write predictions over validation set to file after training is complete.")
 arg_parser.add_argument("--output_path", help="Directory to place output.")
+arg_parser.add_argument("--run_name", help="Name of this run to use for output files.")
 
 # dataset options
 arg_parser.add_argument("--balance", type=str, choices=['balanced', 'unmasked', 'all'], default=None,
@@ -58,7 +59,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.nn import DataParallel
 from torch_geometric.data import DataLoader, DataListLoader
-from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures
+from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures, GenerateMeshNormals
 
 # Geobind modules
 from geobind.nn.utils import loadDataset, classWeights
@@ -106,8 +107,16 @@ if C["no_random"] or C["debug"]:
 
 # Get run name and path
 config = '.'.join(ARGS.config_file.split('.')[:-1])
-run_name = "{}_{}_{}".format(C.get("run_name", config), datetime.now().strftime("%m.%d.%Y.%H.%M"), np.random.randint(1000))
-run_path = ospj(C["output_path"], run_name)
+if ARGS.run_name:
+    run_name = ARGS.run_name
+else:
+    run_name = "{}_{}_{}".format(C.get("run_name", config), datetime.now().strftime("%m.%d.%Y.%H.%M"), np.random.randint(1000))
+
+if ARGS.output_path:
+    run_path = ospj(ARGS.output_path, run_name)
+else:
+    run_path = ospj(C["output_path"], run_name)
+
 if not os.path.exists(run_path) and C["write"]:
     os.makedirs(run_path)
 
@@ -143,12 +152,17 @@ else:
     writer = None
 
 ####################################################################################################
-### Load training/validation data ##################################################################
+# Load training/validation data
 train_datafiles = [_.strip() for _ in open(ARGS.train_file).readlines()]
 valid_datafiles = [_.strip() for _ in open(ARGS.valid_file).readlines()]
 
 remove_mask = (C["balance"] == 'all')
-transform = Compose([GeometricEdgeFeatures(), ScaleEdgeFeatures(method=C["model"]["kwargs"].get("scale_edge_features", None))])
+if C["model"]["kwargs"]["kwargs2"]["pool_args"]["name"] == "MeshPool":
+    transform = Compose([GeometricEdgeFeatures(), ScaleEdgeFeatures(method=C["model"]["kwargs"].get("scale_edge_features", None))])
+    print("generating mesh pool features")
+else:
+    transform = Compose([FaceToEdge(remove_faces=False), GenerateMeshNormals(), PointPairFeatures(), ScaleEdgeFeatures(method=C["model"]["kwargs"].get("scale_edge_features", None))])
+
 train_dataset, transforms, train_info = loadDataset(train_datafiles, C["nc"], C["labels_key"], C["data_dir"],
         cache_dataset=C.get("cache_dataset", False),
         balance=C["balance"],
