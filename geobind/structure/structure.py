@@ -157,11 +157,19 @@ class StructureData(object):
         
         return nn
     
-    def save(self, outfile=None):
+    def save(self, outfile=None, bfactor_key=None):
         __io = PDBIO()
         # write structure to file
-        if(outfile is None):
+        if outfile is None:
             outfile = self.name + ".pdb"
+        
+        if bfactor_key is not None:
+            for atom in self.get_atoms():
+                if bfactor_key in atom.xtra:
+                    atom.bfactor = atom.xtra[bfactor_key]
+                else:
+                    atom.bfactor = 0.0
+        
         logging.debug("Saving pdb file: %s", outfile)
         __io.set_structure(self.structure)
         __io.save(outfile)
