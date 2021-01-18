@@ -11,7 +11,7 @@ from geobind.structure.data import data
 from geobind.mesh import smoothMeshLabels
 
 class AtomToClassMapper(object):
-    def __init__(self, ligand_info, default=None, name="LIGANDS"):
+    def __init__(self, ligand_info, default=0, name="LIGANDS"):
         
         if isinstance(ligand_info, str):
             # check if it's a pre-built label set, otherwise assume it's a file name
