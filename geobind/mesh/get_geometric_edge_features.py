@@ -44,14 +44,17 @@ def getGeometricEdgeFeatures(mesh, directed_edges=True):
         mesh.area_faces[mesh.face_adjacency].sum(axis=1)
     ]
     
-    # sum of the angles <aub + <avb that edge vertices make with 1 ring neighbors
+    # edges of one-ring
     vec_ua = mesh.vertices[mesh.face_adjacency_unshared[:,0]] - mesh.vertices[mesh.edges_unique[:,0]]
     vec_ub = mesh.vertices[mesh.face_adjacency_unshared[:,1]] - mesh.vertices[mesh.edges_unique[:,0]]
     vec_va = mesh.vertices[mesh.face_adjacency_unshared[:,0]] - mesh.vertices[mesh.edges_unique[:,1]]
     vec_vb = mesh.vertices[mesh.face_adjacency_unshared[:,1]] - mesh.vertices[mesh.edges_unique[:,1]]
-    edge_attr.append(getVectorAngle(vec_ua, vec_ub) + getVectorAngle(vec_va, vec_vb))
+    vec_uv = mesh.vertices[mesh.edges_unique[:,1]] - mesh.vertices[mesh.edges_unique[:,0]]
     
-    # sum of the angles <uav + <ubv that edge vertices make with 1 ring neighbors
+    # sum of the adjacent interior angles
+    edge_attr.append(getVectorAngle(vec_ua, vec_uv) + getVectorAngle(vec_ub, vec_uv) + getVectorAngle(vec_va, vec_uv) + getVectorAngle(vec_vb, vec_uv))
+    
+    # sum of the opposite interior angles
     edge_attr.append(getVectorAngle(vec_ua, vec_va) + getVectorAngle(vec_ub, vec_vb))
     
     # combine edge features
