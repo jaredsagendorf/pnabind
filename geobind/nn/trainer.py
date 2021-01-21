@@ -269,9 +269,9 @@ class Trainer(object):
         
         return fname
     
-    def endTraining(self):
+    def endTraining(self, message="Training Successfully Ended."):
         """Stuff we want to do at the end of training"""
-        logging.info("Training ended.")
+        logging.info(message)
         
         # Save best state to file if we kept it
         if self.best_state is not None:
