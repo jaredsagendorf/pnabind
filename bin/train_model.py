@@ -157,7 +157,10 @@ train_datafiles = [_.strip() for _ in open(ARGS.train_file).readlines()]
 valid_datafiles = [_.strip() for _ in open(ARGS.valid_file).readlines()]
 
 remove_mask = (C["balance"] == 'all')
-if C["model"]["kwargs"]["kwargs2"]["pool_args"]["name"] == "MeshPool":
+if "kwargs2" in C["model"]["kwargs"] and C["model"]["kwargs"]["kwargs2"]["pool_args"]["name"] == "MeshPool":
+    transform = Compose([GeometricEdgeFeatures(), ScaleEdgeFeatures(method=C["model"]["kwargs"].get("scale_edge_features", None))])
+    print("generating mesh pool features")
+elif "pool_args" in C["model"]["kwargs"] and C["model"]["kwargs"]["pool_args"]["name"] == "MeshPool":
     transform = Compose([GeometricEdgeFeatures(), ScaleEdgeFeatures(method=C["model"]["kwargs"].get("scale_edge_features", None))])
     print("generating mesh pool features")
 else:
