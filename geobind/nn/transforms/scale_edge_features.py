@@ -22,6 +22,8 @@ class ScaleEdgeFeatures(object):
             data.edge_attr = (data.edge_attr - e_mean)/e_std
         elif self.method is None:
             pass
+        elif self.method is False:
+            pass
         else:
             raise ValueError("Unrecognized scaling method: {}".format(self.method))
         
