@@ -9,7 +9,7 @@ class GeometricEdgeFeatures(object):
     r"""docstring
     """
 
-    def __init__(self, assign_edges=True):
+    def __init__(self, assign_edges=True, pp_features=True, triangle_features=True, n_components=0):
         self.assign_edges=assign_edges
 
     def __call__(self, data):
@@ -19,7 +19,7 @@ class GeometricEdgeFeatures(object):
         assert data.face.size(0) == 3 
         
         mesh = to_trimesh(data)
-        edge_index, edge_attr = getGeometricEdgeFeatures(mesh)
+        edge_index, edge_attr = getGeometricEdgeFeatures(mesh, pp_features=pp_features, triangle_features=triangle_features, PCA=PCA)
         
         if data.x is not None:
             device = data.x.device

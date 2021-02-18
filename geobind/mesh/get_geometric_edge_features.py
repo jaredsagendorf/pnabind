@@ -1,6 +1,7 @@
 # third party packages
 import numpy as np
 import trimesh
+from sklearn.decomposition import PCA
 
 def getVectorAngle(v1, v2):
     return np.arctan2(np.linalg.norm(np.cross(v1, v2, axis=1), axis=1), (v1 * v2).sum(axis=1))
@@ -25,7 +26,7 @@ def getPPFeatures(mesh, edge_index, edge_attr=None):
     
     return features
 
-def getGeometricEdgeFeatures(mesh, directed_edges=True):
+def getGeometricEdgeFeatures(mesh, directed_edges=True, pp_features=True, triangle_features=True, n_components=0):
 
     assert np.all(mesh.edges_unique == mesh.face_adjacency_edges)
     #if not np.all(mesh.edges_unique == mesh.face_adjacency_edges):
@@ -37,28 +38,28 @@ def getGeometricEdgeFeatures(mesh, directed_edges=True):
         #mesh.export("mesh_error.off")
         #exit(0)
     
-    # get undirected edge features derived from adjacent faces
-    edge_attr = [
-        mesh.face_adjacency_angles,
-        mesh.face_adjacency_span,
-        mesh.area_faces[mesh.face_adjacency].sum(axis=1)
-    ]
-    
-    # edges of one-ring
-    vec_ua = mesh.vertices[mesh.face_adjacency_unshared[:,0]] - mesh.vertices[mesh.edges_unique[:,0]]
-    vec_ub = mesh.vertices[mesh.face_adjacency_unshared[:,1]] - mesh.vertices[mesh.edges_unique[:,0]]
-    vec_va = mesh.vertices[mesh.face_adjacency_unshared[:,0]] - mesh.vertices[mesh.edges_unique[:,1]]
-    vec_vb = mesh.vertices[mesh.face_adjacency_unshared[:,1]] - mesh.vertices[mesh.edges_unique[:,1]]
-    vec_uv = mesh.vertices[mesh.edges_unique[:,1]] - mesh.vertices[mesh.edges_unique[:,0]]
-    
-    # sum of the adjacent interior angles
-    edge_attr.append(getVectorAngle(vec_ua, vec_uv) + getVectorAngle(vec_ub, vec_uv) + getVectorAngle(vec_va, vec_uv) + getVectorAngle(vec_vb, vec_uv))
-    
-    # sum of the opposite interior angles
-    edge_attr.append(getVectorAngle(vec_ua, vec_va) + getVectorAngle(vec_ub, vec_vb))
-    
-    # combine edge features
-    edge_attr = np.stack(edge_attr, axis=1)
+    edge_attr = []
+    if triangle_features:
+        # get undirected edge features derived from adjacent triangle faces
+        edge_attr.append(mesh.face_adjacency_angles)
+        edge_attr.append(mesh.face_adjacency_span)
+        edge_attr.append(mesh.area_faces[mesh.face_adjacency].sum(axis=1)/3)
+        
+        # edges of one-ring
+        vec_ua = mesh.vertices[mesh.face_adjacency_unshared[:,0]] - mesh.vertices[mesh.edges_unique[:,0]]
+        vec_ub = mesh.vertices[mesh.face_adjacency_unshared[:,1]] - mesh.vertices[mesh.edges_unique[:,0]]
+        vec_va = mesh.vertices[mesh.face_adjacency_unshared[:,0]] - mesh.vertices[mesh.edges_unique[:,1]]
+        vec_vb = mesh.vertices[mesh.face_adjacency_unshared[:,1]] - mesh.vertices[mesh.edges_unique[:,1]]
+        vec_uv = mesh.vertices[mesh.edges_unique[:,1]] - mesh.vertices[mesh.edges_unique[:,0]]
+        
+        # sum of the adjacent interior angles
+        edge_attr.append(getVectorAngle(vec_ua, vec_uv) + getVectorAngle(vec_ub, vec_uv) + getVectorAngle(vec_va, vec_uv) + getVectorAngle(vec_vb, vec_uv))
+        
+        # sum of the opposite interior angles
+        edge_attr.append(getVectorAngle(vec_ua, vec_va) + getVectorAngle(vec_ub, vec_vb))
+        
+        # combine edge features
+        edge_attr = np.stack(edge_attr, axis=1)
     
     if directed_edges:
         # create undirected edges
@@ -70,6 +71,10 @@ def getGeometricEdgeFeatures(mesh, directed_edges=True):
         edge_attr = np.concatenate([edge_attr, edge_attr])
     
         # get PP Features
-        edge_attr = getPPFeatures(mesh, edge_index, edge_attr)
+        if pp_features:
+            edge_attr = getPPFeatures(mesh, edge_index, edge_attr)
+    
+    if n_components > 0:
+        edge_attr = PCA(n_components=n_components, copy=False).fit_transform(edge_attr)
     
     return edge_index, edge_attr
