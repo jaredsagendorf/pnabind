@@ -100,10 +100,12 @@ class Mesh(object):
     def __init__(self, handle=None, vertices=None, faces=None, name="mesh", process=True, remove_disconnected_components=True, smoothing=None, **kwargs):
         self.name = name
         if(handle is not None):
-            if(isinstance(handle, str)):
+            if isinstance(handle, str):
                 self.mesh = trimesh.load(handle, process=process, **kwargs)
+            elif isinstance(handle, trimesh.Trimesh):
+                self.mesh = handle
             else:
-                raise TypeError("Mesh file handle must be a string.")
+                raise TypeError("arg `handle` must be a string or a Trimesh object!")
         elif((vertices is not None) and (faces is not None)):
             # Check that these are valid sizes/types
             if(vertices.shape[1] != 3 or vertices.ndim != 2):
