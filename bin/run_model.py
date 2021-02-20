@@ -4,6 +4,7 @@
 import argparse
 import json
 import logging
+import os
 from os.path import join as ospj
 from pickle import load
 
@@ -120,26 +121,23 @@ if ARGS.summarize_data:
     reportMetrics({'Entire Dataset Summary': metrics} , header=True)
 
 if ARGS.iterate_data or ARGS.write_predictions:
-    i = 0
+    prediction_path = ARGS.write_predictions
+    if not os.path.exists(prediction_path):
+        os.mkdir(prediction_path)
+    lw = max([len(_)-len("_protein_data.npz") for _ in datafiles] + [len("Protein Identifier")])
     use_header = True
-    use_metrics = (not ARGS.no_metrics)
-    for item in evaluateDataset(model, dataset, metrics=use_metrics, mask=use_mask, iterate=True, threshold=ARGS.threshold):
-        if(use_metrics):
-            y, prob, metrics = item
-            # report metrics
-            reportMetrics(
-                {'per-datum metrics': metrics},
-                label=('protein (<pdbid>.<dna_entity>_<protein_entity>.<model>)', data_files[i]),
-                header=use_header
-            )
-        else:
-            y, prob = item
+    
+    val_out = evaluator.eval(DL, use_masks=use_mask, batchwise=True, return_masks=True, return_predicted=True, return_batches=True, xtras=['pos', 'face'], threshold=ARGS.threshold)
+    for i in range(val_out['num_batches']):
+        name = datafiles[i].replace("_protein_data.npz", "")
+        
+        # compute metrics
+        y, prob, mask = val_out['y'][i], val_out['output'][i], val_out['masks'][i]
+        batch = val_out['batches'][i]
+        metrics = evaluator.getMetrics(y, prob, mask, batch, threshold=ARGS.threshold)
+        reportMetrics({"validation predictions": metrics}, label=("Protein Identifier", name), label_width=lw, header=use_header)
         
         # write predictions to file
-        if(ARGS.write_predictions):
-            # compute predictions
-            y_pr = (prob[:,1] >= ARGS.threshold).long().cpu()
-            np.save(ospj(ARGS.write_predictions, "%s_vertex_labels_p.npy" % (data_files[i])), y_pr)
-            np.save(ospj(ARGS.write_predictions, "%s_vertex_probs.npy" % (data_files[i])), prob)
-        i += 1
-        use_header = False
+        if ARGS.write_predictions:
+            np.savez_compressed(ospj(prediction_path, "%s_predict.npz" % (name)), Y=y, Ypr=val_out['predicted_y'][i], P=prob, V=val_out['pos'][i], F=val_out['face'][i].T)
+        use_header=False
