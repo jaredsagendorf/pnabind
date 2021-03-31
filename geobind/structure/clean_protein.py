@@ -29,11 +29,11 @@ class ResidueMutator(object):
         """ The mutator object takes a non-standard residue or incomplete residue and modifies it
         """
         # get defaults if not provided
-        if(standard_residues is None):
+        if standard_residues is None:
             standard_residues = data.standard_residues
-        if(tripeptides is None):
+        if tripeptides is None:
             tripeptides = data.tripeptides
-        if(components is None):
+        if components is None:
             components = data.chem_components
         self.components = components
         self.candidates = {}
@@ -49,21 +49,19 @@ class ResidueMutator(object):
             for model in structure:
                 self.candidates[resn].append(model[" "][2])
     
-    def mutate(self, residue, repair=False):
+    def mutate(self, residue):
         resn = residue.get_resname()
-        if(repair):
-            # use residue as its own parent
+        
+        if self.standard(resn):
+            # the residue is already a standard residue, here for repair
             parn = resn
         else:
-            if(self.standard(resn)):
-                # the residue is already a standard residue, do not need to mutate.
-                return residue
             parn = self.components[resn]['_chem_comp.mon_nstd_parent_comp_id']
-            if(not self.standard(parn)):
+            if not self.standard(parn):
                 # the parent residue is a nonstandard residue, can't mutate
                 return False
         
-        if(parn not in self.candidates):
+        if parn not in self.candidates:
             # parent not in candidate structures
             return False
         
@@ -74,8 +72,11 @@ class ResidueMutator(object):
         # get list of side chain atoms present in residue
         atom_list = []
         for atom in atom_names:
-            if(atom in residue):
+            if atom in residue:
                 atom_list.append(atom)
+        
+        if len(atom_list) == 0:
+            return False
         
         # get side chain atom coordinates
         fixed_coord = np.zeros((len(atom_list), 3))
@@ -107,23 +108,23 @@ class ResidueMutator(object):
         # replace backbone atoms of candidate
         backbone_atoms = self.components[resn]['main_chain_atoms']
         for atom in backbone_atoms:
-            if(atom not in residue):
+            if atom not in residue:
                 continue
-            if(atom not in candidate):
+            if atom not in candidate:
                 candidate.add(residue[atom].copy())
             candidate[atom].set_coord(residue[atom].get_coord())
         
         return candidate
     
     def standard(self, resname):
-        return (resname in self.standard_residues)
+        return resname in self.standard_residues
     
     def modified(self, resname):
-        if(resname in self.standard_residues):
+        if resname in self.standard_residues:
             # it's standard, not modified
             return False
         
-        if(resname in self.components and '_chem_comp.mon_nstd_parent_comp_id' in self.components[resname]):
+        if resname in self.components and '_chem_comp.mon_nstd_parent_comp_id' in self.components[resname]:
             return (
                 (resname not in self.standard_residues)
                 and
@@ -142,7 +143,7 @@ def heavyAtomCount(residue):
 
 def cleanProtein(
         structure, mutator=None, regexes=None, hydrogens=True, pdb2pqr=True,
-        replace_hydrogens=False, add_charge_radius=True, keepPQR=True, min_radius=0.6
+        replace_hydrogens=False, add_charge_radius=True, keepPQR=True, min_radius=0.6, quiet=False
     ):
     """ Perform any operations needed to modify the structure or sequence of a protein
     chain.
@@ -151,7 +152,7 @@ def cleanProtein(
     if regexes is None:
         regexes = data.regexes
     if mutator is None:
-        mutator = ResidueMutator(data.tripeptides, data.components)
+        mutator = ResidueMutator(data.tripeptides, data.chem_components)
     
     # remove non-standard residues
     for chain in structure.get_chains():
@@ -162,30 +163,35 @@ def cleanProtein(
             resid = residue.get_id()
             if heavyAtomCount(residue)/(data.chem_components[resn]['heavy_atom_count']-1) < 0.5:
                 # too many missing atoms
-                remove.append( (resid, "remove residue, too many missing atoms: %s") )
-            elif(mutator.standard(resn)):
+                replace.append(resid)
+            elif mutator.standard(resn):
                 continue
-            elif(resn == 'HOH' or resn == 'WAT'):
+            elif resn == 'HOH' or resn == 'WAT':
                 remove.append( (resid, None) )
-            elif(regexes["SOLVENT_COMPONENTS"].search(resn)):
+            elif regexes["SOLVENT_COMPONENTS"].search(resn):
                 continue
-            elif(mutator.modified(resn)):
+            elif mutator.modified(resn):
                 replace.append(resid)
             else:
                 remove.append( (resid, "removed unrecognized residue: %s") )
         
         for rid, reason in remove:
-            if reason is not None:
+            if reason is not None and not quiet:
                 logging.info(reason, chain[rid].get_resname())
             chain.detach_child(rid)
         
         for rid in replace:
             replacement = mutator.mutate(chain[rid])
-            logging.info("replacing modified residue %s with %s", chain[rid].get_resname(), replacement.get_resname())
-            chain.detach_child(rid)
-            if(replacement):
+            if replacement:
+                if not quiet:
+                    logging.info("replacing residue %s with %s", chain[rid].get_resname(), replacement.get_resname())
+                chain.detach_child(rid)
                 replacement.id = rid
                 chain.add(replacement)
+            else:
+                if not quiet:
+                    logging.info("could not perform replacement on %s, removing", chain[rid].get_resname())
+                chain.detach_child(rid)
     
     # run PDB2PQR if requested
     if pdb2pqr:
@@ -214,7 +220,7 @@ def cleanProtein(
         FNULL.close()
         
         parser = PDBParser(PERMISSIVE=1, QUIET=True)
-        if(not os.path.exists(pqrFile)):
+        if not os.path.exists(pqrFile):
             raise FileNotFoundError("No PQR file was produced ({}). Try manually running PDB2PQR on the pbdfile file '{}' and verify output.".format(pqrFile, pdbFile))
         structure = parser.get_structure("repaired", pqrFile)
         model = structure[0]
@@ -240,7 +246,7 @@ def cleanProtein(
             
         # clean up
         os.remove(pdbFile)
-        if(not keepPQR):
+        if not keepPQR:
             os.remove(pqrFile)
     
     # remove hydrogens if requested
