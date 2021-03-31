@@ -120,7 +120,13 @@ class Data(object):
         # Standard SESA data
         with open(os.path.join(DATA_PATH, 'standard-sesa.json')) as FILE:
             self.standard_sesa = json.load(FILE)
-            
+        
+        with open(os.path.join(DATA_PATH, 'standard-sesa-H.json')) as FILE:
+            self.standard_sesa_H = json.load(FILE)
+        
+        with open(os.path.join(DATA_PATH, 'buried_sesa_cutoffs.json')) as FILE:
+            self.buried_sesa_cutoffs = json.load(FILE)
+        
         # Hydrogen bond donor/acceptor data
         with open(os.path.join(DATA_PATH,'hbond-data.json')) as FILE:
             self.hydrogen_bond_data = json.load(FILE)
@@ -129,12 +135,35 @@ class Data(object):
         with open(os.path.join(DATA_PATH,'bond-data.json')) as FILE:
             self.covalent_bond_data = json.load(FILE)
         
-        # vdw radii
+        # heavy atom vdw radii
         with open(os.path.join(DATA_PATH,'vdw-radii.json')) as FILE:
             self.vdw_radii = json.load(FILE)
+        
+        # EDTSurf atom vdw radii
+        with open(os.path.join(DATA_PATH,'vdw-radii-EDTSurf.json')) as FILE:
+            self.vdw_radii_edtsurf = json.load(FILE)
             
         # Tripeptide conformations
         self.tripeptides = glob.glob(os.path.join(DATA_PATH, "tripeptides/*_md.pdb"))
+        
+        # AMBER charge/radii parameters
+        self.AMBER = {}
+        with open(os.path.join(DATA_PATH,'AMBER.DAT')) as FILE:
+            for line in FILE:
+                line = line.strip()
+                if line[0] == '#':
+                    continue
+                line = line.split()
+                res, atom, charge, radius, _ = line
+                radius = float(radius)
+                charge = float(charge)
+                radius = max(radius, 0.6)
+                if res not in self.AMBER:
+                    self.AMBER[res] = {}
+                self.AMBER[res][atom] = {
+                    "charge": charge,
+                    "radius": radius
+                }
         
         ################################# Structure class datasets #################################
         self.label_sets = {}
