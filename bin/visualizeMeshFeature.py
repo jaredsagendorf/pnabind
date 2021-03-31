@@ -114,7 +114,7 @@ def getDataFields(data, key_name=None):
         if key == "V" or key == "F" or key == "N":
             continue
         dtype = data[key].dtype
-        if any([dtype == np.int64, dtype == np.bool, dtype == np.float32, dtype == np.float64]):
+        if any([dtype == np.int64, dtype == bool, dtype == np.float32, dtype == np.float64]):
             if data[key].ndim > 1:
                 if key_name and key in key_name:
                     for i in range(data[key].shape[1]):
@@ -142,7 +142,11 @@ feature_list = ""
 #if "feature_names" in data:
     #for i, feature in enumerate(data['feature_names']):
         #feature_list += "X{:<2d}: {}\n".format(i, feature)
-feature_list += getDataFields(data, key_name={'X': data['feature_names']})
+if "feature_names" in data:
+    feature_list += getDataFields(data, key_name={'X': data['feature_names']})
+else:
+    feature_list += getDataFields(data)
+
 if ARGS.extras_file:
     feature_list += getDataFields(extras)
 feauture_list = feature_list.strip()
@@ -161,6 +165,7 @@ Enter one of the following:
     c to compare two data fields
     q to exit
     s to selected scene as a .ply file
+    t a threshold to visualize predictions with: Y = (P1 >= t)
     a list of data fields, separated by space (e.g. "X1 X2 Y")
 :""".strip()
 
@@ -185,6 +190,11 @@ while True:
         break
     elif(INP == 'l'):
         print(feature_list)
+    elif(inp[0] == 't'):
+        t = float(inp[1:].strip())
+        arrays = getDataArrays(['P1'])
+        Y = (arrays[0] >= t)
+        visualizeMesh(mesh, [Y], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors)
     elif(INP == 'm'):
         visualizeMesh(mesh)
     elif(inp[0] == 'c'):
@@ -209,6 +219,7 @@ while True:
     else:
         INP = INP.split()
         arrays = getDataArrays(INP)
+        #print(arrays[0].min(), arrays[0].max(), arrays[0].mean())
         if ARGS.multiclass_labels:
             visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors)
         else:

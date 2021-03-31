@@ -5,6 +5,8 @@ import argparse
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("structures_file",
                 help="a list of interface structures to process.")
+arg_parser.add_argument("--residue_ids",
+                help="a list of residue identifiers that define a binding site")
 arg_parser.add_argument("-o", "--output_file", default="processed_files.dat",
                 help="Name of output file to write a list of datafiles which were generated.")
 arg_parser.add_argument("-c", "--config", dest="config_file", required=True,
@@ -27,6 +29,8 @@ arg_parser.add_argument("-l", "--ligand_list", dest="ligand_list", nargs="+",
                 help="a list of ligand identifiers")
 arg_parser.add_argument("-y", "--label_set_name",
                 help="a name for the label set")
+arg_parser.add_argument("--label_method", choices=["structure_structure_distance", "structure_vertex_distance"], default="structure_vertex_distance",
+                help="a name for the label set")
 ARGS = arg_parser.parse_args()
 
 # builtin modules
@@ -45,11 +49,11 @@ from scipy.sparse import save_npz
 import geobind
 from geobind import mapStructureFeaturesToMesh, AtomToClassMapper
 from geobind.structure.data import data as D
-from geobind.structure import StructureData
+from geobind.structure import StructureData, pairsWithinDistance
 from geobind.structure import ResidueMutator
 from geobind.utils import Interpolator
 
-def getEntities(structure, atom_mapper, regexes, mi=0):
+def getEntities(structure, regexes, atom_mapper=None, mi=0):
     """Docstring"""
     pro = []
     lig = []
@@ -58,10 +62,36 @@ def getEntities(structure, atom_mapper, regexes, mi=0):
             resname = residue.get_resname()
             if regexes['PROTEIN']['STANDARD_RESIDUES'].search(resname):
                 pro.append(residue.get_full_id())
-            elif atom_mapper.testResidue(residue):
+            
+            if atom_mapper:
+                if atom_mapper.testResidue(residue):
+                    lig.append(residue.get_full_id())
+            else:
                 lig.append(residue.get_full_id())
     
     return structure.slice(structure, pro, 'protein'), structure.slice(structure, lig, 'ligand')
+
+def accumulateSESA(res_dict, atoms, key):
+    if isinstance(atoms, StructureData):
+        atoms = atoms.atom_list
+    
+    for atom in atoms:
+        if atom.xtra[key] <= 0:
+            continue
+        
+        residue = atom.get_parent()
+        resn = residue.get_resname()
+        if resn in D.standard_residues:
+            _, __, cid, rid = residue.get_full_id()
+            rid = "{}.{}.{}".format(cid, rid[1], rid[2])
+            if rid not in res_dict:
+                res_dict[rid] = {
+                    'fsesa': 0.0,
+                    'csesa': 0.0,
+                    'resn': resn
+                }
+            
+            res_dict[rid][key] += atom.xtra[key]
 
 def main():
     ### Load various data files ####################################################################
@@ -88,27 +118,35 @@ def main():
             atom_mapper = AtomToClassMapper(C["LIGAND_LIST"], default=0, name=C.get("LIGAND_SET_NAME", "LIGANDS"))
         elif "MOIETY_LABEL_SET_NAME" in C:
             atom_mapper = AtomToClassMapper(C["MOIETY_LABEL_SET_NAME"])
+        elif ARGS.residue_ids:
+            atom_mapper = None
         
         if ARGS.label_set_name:
             label_names = ARGS.label_set_name
         else:
             label_names = "Y_{}".format(atom_mapper.name)
+    else:
+        atom_mapper = None
     
     ### Load the interface file which describes a list of DNA-protein interfaces to process ########
     listFile = ARGS.structures_file
     PROCESSED = open(ARGS.output_file, "w")
     
+    if ARGS.residue_ids:
+        RIFH = open(ARGS.residue_ids)
+        
     # main loop
     for fileName in open(listFile):
         fileName = fileName.strip()
         if(fileName[0] == '#'):
             # skip commented lines
+            RIFH.readline()
             continue
         
         ### LOAD STRUCTURE #########################################################################
         protein_id = '.'.join(fileName.split('.')[0:-1]) + '_protein'
         structure = StructureData(fileName, name=protein_id, path=C["PDB_FILES_PATH"])
-        protein, lig = getEntities(structure, atom_mapper, D.regexes)
+        protein, lig = getEntities(structure, D.regexes, atom_mapper)
         
         # Clean the protein entity
         protein, pqr = geobind.structure.cleanProtein(protein, res_mutator, hydrogens=C['HYDROGENS'])
@@ -119,7 +157,7 @@ def main():
         
         # Generate a mesh
         mesh_prefix = "{}_mesh".format(protein_id)
-        mesh_kwargs = dict(op_mode='normal', surface_type='skin', skin_parameter=0.45, grid_scale=C.get("GRID_SCALE", 2.0))
+        mesh_kwargs = dict(op_mode='normal', surface_type='skin', skin_parameter=0.45, grid_scale=C.get("GRID_SCALE", 0.8))
         if ARGS.refresh:
             mesh = geobind.mesh.generateMesh(protein, 
                 prefix=mesh_prefix,
@@ -212,13 +250,17 @@ def main():
                 # get the potential files
                 potfile = ospj(C["ELECTROSTATICS_PATH"], protein_id+"_potential.dx")
                 accessfile = ospj(C["ELECTROSTATICS_PATH"], protein_id+"_access.dx")
-                if (not ARGS.refresh) and os.path.exists(potfile) and os.path.exists(accessfile):
+                if os.path.exists(potfile) and os.path.exists(accessfile):
                     phi = Interpolator(potfile)
                     logging.info("Loaded potential %s from file.", potfile)
                     acc = Interpolator(accessfile)
                     logging.info("Loaded accessibility %s from file.", accessfile)
                 else:
-                    phi, acc = geobind.structure.runAPBS(protein, protein_id, pqr=pqr, basedir=C["ELECTROSTATICS_PATH"])
+                    try:
+                        phi, acc = geobind.structure.runAPBS(protein, protein_id, pqr=pqr, basedir=C["ELECTROSTATICS_PATH"])
+                    except subpro.CalledProcessError:
+                        # try with coarser values
+                        phi, acc = geobind.structure.runAPBS(protein, protein_id, pqr=pqr, basedir=C["ELECTROSTATICS_PATH"], space=0.5, cfac=1.5)
                 
                 Xe, features_e = geobind.mesh.mapElectrostaticPotentialToMesh(mesh, phi, acc, efield=True, diff_method='five_point_stencil')
                 FEATURE_NAMES += features_e
@@ -229,16 +271,65 @@ def main():
         if update_labels:
             # Compute labels
             logging.info("Computing a new set of labels for %s" , protein_id)
-            Y = geobind.assignMeshLabelsFromStructure(lig, mesh, atom_mapper,
-                smooth=C["SMOOTH_LABELS"],
-                mask=C["MASK_LABELS"],
-                distance_cutoff=C["MESH_DISTANCE_CUTOFF"],
-                mask_cutoff=C.get("MASK_DISTANCE_CUTOFF", 0)
-            )
+            
+            # determine how we define binding site
+            if ARGS.residue_ids:
+                res_ids = RIFH.readline().strip().split(',')
+            elif ARGS.label_method == "structure_vertex_distance":
+                res_ids = None
+            elif ARGS.label_method == "structure_structure_distance":
+                res_ids, lig_ids = pairsWithinDistance(protein, lig, distance=C.get("ATOM_DISTANCE_CUTOFF", 4.0), hydrogens=False)
+            
+            if res_ids:
+                Y = geobind.assignMeshLabelsFromList(protein, mesh, res_ids,
+                    weight_method='linear',
+                    distance_cutoff=1.5,
+                    smooth=C["SMOOTH_LABELS"],
+                    smoothing_threshold=C.get("SMOOTHING_THRESHOLD", 50.0),
+                    no_smooth=C.get("NO_SMOOTH_CLASSES", [1])
+                )
+            else:
+                Y = geobind.assignMeshLabelsFromStructure(lig, mesh, atom_mapper,
+                    smooth=C["SMOOTH_LABELS"],
+                    smoothing_threshold=C.get("SMOOTHING_THRESHOLD", 50.0),
+                    no_smooth=C.get("NO_SMOOTH_CLASSES", [1]),
+                    mask=C["MASK_LABELS"],
+                    distance_cutoff=C["MESH_DISTANCE_CUTOFF"],
+                    mask_cutoff=C.get("MASK_DISTANCE_CUTOFF", 0)
+                )
+            
+            # elif ARGS.label_method == "buried_sesa":
+                # getAtomChargeRadius(lig, source="EDTSurf")
+                # com = lig.atom_list + protein.atom_list
+                
+                # # compute SESA values
+                # getAtomSESA(protein, hydrogens=C["HYDROGENS"], key="fsesa")
+                # getAtomSESA(com, hydrogens=C["HYDROGENS"], key="csesa")
+                
+                # # get residue buried SESA
+                # residue_sesa = {}
+                # accumulateSESA(residue_sesa, protein, "fsesa")
+                # accumulateSESA(residue_sesa, com, "csesa")
+                
+                # res_ids = []
+                # for rid in residue_sesa:
+                    # bsesa = residue_sesa[rid]['fsesa'] - residue_sesa[rid]['csesa']
+                    # resn = residue_sesa[rid]['resn']
+                    # if bsesa >= D.buried_sesa_cutoffs[resn]:
+                        # res_ids.append(rid)
+                
+                # Y = geobind.assignMeshLabelsFromList(protein, mesh, res_ids,
+                    # weight_method='linear',
+                    # distance_cutoff=0.5,
+                    # smooth=C["SMOOTH_LABELS"],
+                    # smoothing_threshold=C.get("SMOOTHING_THRESHOLD", 50.0),
+                    # no_smooth=C.get("NO_SMOOTH_CLASSES", [1])
+                # )
+    
         
         ### OUTPUT #############################################################################
         # Write features to disk
-
+        
         # Vertex features
         if update_features:
             FEATURES = [x.reshape(-1, 1) if x.ndim == 1 else x for x in FEATURES]
@@ -248,7 +339,10 @@ def main():
         # Mesh labels
         if update_labels:
             arrays[label_names] = Y
-            arrays['{}_classes'.format(label_names)] = atom_mapper.classes
+            if atom_mapper:
+                arrays['{}_classes'.format(label_names)] = atom_mapper.classes
+            if res_ids:
+                arrays['residue_identifiers'] = res_ids
         
         # Write mesh data to disk
         np.savez_compressed(fname, **arrays)
