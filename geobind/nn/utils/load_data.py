@@ -37,7 +37,8 @@ class ClassificationDatasetMemory(InMemoryDataset):
             remove_mask=False,
             unmasked_class=0,
             scale=True,
-            scaler=None
+            scaler=None,
+            feature_mask=None
         ):
         if(save_dir is None):
             save_dir = data_dir
@@ -55,6 +56,7 @@ class ClassificationDatasetMemory(InMemoryDataset):
         self.transform = transform
         self.pre_filter = pre_filter
         self.pre_transform = pre_transform
+        self.feature_mask = feature_mask
         
         super(ClassificationDatasetMemory, self).__init__(save_dir, transform, pre_transform, pre_filter)
         # load data
@@ -103,7 +105,8 @@ class ClassificationDatasetMemory(InMemoryDataset):
             scale=self.scale,
             pre_filter=self.pre_filter,
             pre_transform=self.pre_transform,
-            transform=self.transform
+            transform=self.transform,
+            feature_mask=self.feature_mask
         )
         
         # save data
@@ -124,7 +127,8 @@ def _processData(data_files, nc, labels_key,
         scale=True,
         transform=None,
         pre_filter=None,
-        pre_transform=None
+        pre_transform=None,
+        feature_mask=None
     ):
     data_list = []
     
@@ -145,8 +149,13 @@ def _processData(data_files, nc, labels_key,
         else:
             raise ValueError("Unrecognized value for `balance` keyword: {}".format(balance))
         
+        if feature_mask is not None:
+            X = data_arrays['X'][:, feature_mask]
+        else:
+            X = data_arrays['X']
+        
         data = Data(
-            x=torch.tensor(data_arrays['X'], dtype=torch.float32),
+            x=torch.tensor(X, dtype=torch.float32),
             y=torch.tensor(data_arrays[labels_key], dtype=torch.int64),
             pos=torch.tensor(data_arrays['V'], dtype=torch.float32),
             norm=torch.tensor(data_arrays['N'], dtype=torch.float32),
