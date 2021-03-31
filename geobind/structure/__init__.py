@@ -11,6 +11,9 @@ from .get_hbond_atoms import getHBondAtoms
 from .run_apbs import runAPBS
 from .get_atom_kdtree import getAtomKDTree
 from .structure import StructureData
+from .map_point_features_to_structure import mapVertexProbabilitiesToStructure
+from .map_point_features_to_structure import mapPointFeaturesToStructure
+from .pairs_within_distance import pairsWithinDistance
 
 __all__ = [
     "cleanProtein",
@@ -26,5 +29,8 @@ __all__ = [
     "getHBondAtoms",
     "runAPBS",
     "getAtomKDTree",
-    "StructureData"
+    "StructureData",
+    "mapVertexProbabilitiesToStructure",
+    "mapPointFeaturesToStructure",
+    "pairsWithinDistance"
 ]
