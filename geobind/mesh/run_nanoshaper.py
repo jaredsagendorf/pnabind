@@ -87,18 +87,20 @@ Vertex_Atom_Info = false"""
     else:
         subprocess.call(args)
     
-    if(pockets_only):
+    if pockets_only:
         # Do not return a mesh, exit from here
-        if(clean):
+        if clean:
             os.remove("{}.prm".format(file_prefix))
             os.remove("{}.xyzr".format(file_prefix))
         return
     
     # rename mesh file
+    if not os.path.exists("triangulatedSurf.off"):
+        raise FileNotFoundError("NanoShaper did not produce any output! Check that your settings are valid...")
     os.rename("triangulatedSurf.off", "{}.off".format(file_prefix))
     
     # clean up NanoShaper files
-    if(clean):
+    if clean:
         os.remove("{}.prm".format(file_prefix))
         os.remove("{}.xyzr".format(file_prefix))
     else:
@@ -107,7 +109,7 @@ Vertex_Atom_Info = false"""
     
     # move meshfile to base dir
     meshfile = "{}.off".format(file_prefix)
-    if(basedir != os.getcwd()):
+    if basedir != os.getcwd():
         __move(meshfile, basedir)
         meshfile = os.path.join(basedir, meshfile)
     

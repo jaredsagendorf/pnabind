@@ -14,7 +14,7 @@ def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None,
     features = [] # atomic features
     F = lambda f: atom.xtra.get(f, 0.0)
     for atom in structure.get_atoms():
-        if(not hydrogens and atom.element == 'H'):
+        if not hydrogens and atom.element == 'H':
             # ignore hydrogen atoms
             continue
         
