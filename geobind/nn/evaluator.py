@@ -50,8 +50,7 @@ class Evaluator(object):
                     'mean_iou': {'average': 'weighted'},
                     'precision': {'average': 'binary', 'zero_division': 0},
                     'recall': {'average': 'binary', 'zero_division': 0},
-                    'accuracy': {},
-                    #'smoothness': {'method': 'weighted_vertex'}
+                    'accuracy': {}
                 }
             elif nc > 2:
                 # three or more classes 
@@ -60,12 +59,12 @@ class Evaluator(object):
                     labels.remove(negative_class)
                 metrics={
                     'balanced_accuracy': {},
-                    'mean_iou': {'average': 'weighted', 'labels': labels},
+                    'mean_iou': {'average': 'weighted', 'labels': labels, 'zero_division': 0},
                     'precision': {'average': 'weighted', 'zero_division': 0, 'labels': labels},
                     'recall': {'average': 'weighted', 'zero_division': 0, 'labels': labels},
                     'accuracy': {},
                     'matthews_corrcoef': {},
-                    #'smoothness': {'method': 'weighted_vertex'}
+                    'auroc': {'average': 'macro'},
                 }
             else:
                 # TODO - assume regression
@@ -77,24 +76,10 @@ class Evaluator(object):
             self.metrics = metrics
     
     @torch.no_grad()
-    def eval(self, dataset, batchwise=False, use_masks=True, return_masks=False, return_predicted=False, return_batches=True, xtras=None, **kwargs):
-        """Returns numpy arrays!!!"""
-        self.model.eval()
+    def eval(self, dataset, eval_mode=True, batchwise=False, use_masks=True, return_masks=False, return_predicted=False, return_batches=True, xtras=None, split_batches=False, **kwargs):
+        """Returns numpy arrays!!!"""        
         
-        # evaluate model on given dataset
-        data_items = {}
-        y_gts = []
-        y_prs = []
-        outps = []
-        masks = []
-        batches = []
-        if xtras is not None:
-            # these items will not be masked even if `use_mask == True`
-            for item in xtras:
-                data_items[item] = []
-        
-        # loop over dataset
-        for batch in dataset:
+        def _loop(batch, data_items, y_gts, y_prs, outps, masks, batches):
             batch_data = processBatch(self.device, batch, xtras=xtras)
             batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['mask']
             output = self.model(batch)
@@ -130,6 +115,31 @@ class Evaluator(object):
                     else:
                         batches.append(batch.to('cpu'))
         
+        # eval or training
+        if eval_mode:
+            self.model.eval()
+        
+        # evaluate model on given dataset
+        data_items = {}
+        y_gts = []
+        y_prs = []
+        outps = []
+        masks = []
+        batches = []
+        if xtras is not None:
+            # these items will not be masked even if `use_mask == True`
+            for item in xtras:
+                data_items[item] = []
+        
+        # loop over dataset
+        for batch in dataset:
+            if split_batches:
+                dl = batch.to_data_list()
+                for d in dl:
+                    _loop(d, data_items, y_gts, y_prs, outps, masks, batches)
+            else:
+                _loop(batch, data_items, y_gts, y_prs, outps, masks, batches)
+        
         # decide what to do with each data item
         data_items['y'] = y_gts
         data_items['output'] = outps
@@ -152,50 +162,79 @@ class Evaluator(object):
         
         return data_items
     
-    def getMetrics(self, *args, metric_values=None, threshold=None, threshold_metric='balanced_accuracy', report_threshold=False, **kwargs):
+    def getMetrics(self, *args, 
+            eval_mode=True, 
+            metric_values=None, 
+            threshold=None, 
+            threshold_metric='balanced_accuracy', 
+            report_threshold=False,
+            metrics_calculation="total",
+            split_batches=False,
+            **kwargs
+        ):
         if self.metrics is None:
             return {}
         if metric_values is None:
-            metric_values = {}
+            metric_values = {key: [] for key in self.metrics}
         if 'threshold' in metric_values:
             threshold = metric_values['threshold']
-            
+        
+        if metrics_calculation == "total":
+            batchwise = False
+        elif metrics_calculation == "average_batches":
+            batchwise = True
+        else:
+            raise ValueError("Invalid option for `metrics_calculation`: {}".format(metrics_calculation))
+        
         # Determine what we were given (a dataset or labels/predictions)
         if len(args) == 1:
-            evald = self.eval(args[0], use_masks=False, return_masks=True, return_batches=True, **kwargs)
-            y_gt = evald['y']
-            outs = evald['output']
-            batches = evald['batches']
-            masks = evald['masks']
+            evald = self.eval(args[0], eval_mode=eval_mode, use_masks=False, return_masks=True, return_batches=True, batchwise=batchwise, split_batches=split_batches, **kwargs)
+            if batchwise:
+                y_gt = evald['y']
+                outs = evald['output']
+                batches = evald['batches']
+                masks = evald['masks']
+            else:
+                y_gt = [evald['y']]
+                outs = [evald['output']]
+                batches = [evald['batches']]
+                masks = [evald['masks']]
         else:
             if len(args) == 3:
                 y_gt, outs, masks = args
                 batches = None
             else:
                 y_gt, outs, masks, batches = args
+                batches = [batches]
+            y_gt = [y_gt]
+            outs = [outs]
+            masks = [masks]
         
         # Get predicted class labels
-        y_pr = self.predictClass(outs, y_gt, metric_values, threshold=threshold, threshold_metric=threshold_metric, report_threshold=report_threshold)
-        
-        if batches is not None:
-            y_gt[~masks] = self.negative_class
-            metric_values = self.getGraphMetrics(batches, y_gt, y_pr, metric_values)
-        
-        if masks is not None:    
-            y_gt = y_gt[masks]
-            y_pr = y_pr[masks]
-            outs = outs[masks]
-        
-        # Compute metrics
-        for metric, kw in self.metrics.items():
-            if metric == 'auprc' or metric == 'auroc':
-                # AUC metrics
-                metric_values[metric] = METRICS_FN[metric](y_gt, outs, **kw)
-            elif metric == 'smoothness':
-                # use `getGraphMetrics` for this
-                continue
-            else:
-                metric_values[metric] = METRICS_FN[metric](y_gt, y_pr, **kw)
+        for i in range(len(y_gt)):
+            y_pr = self.predictClass(outs[i], y_gt[i], metric_values, threshold=threshold, threshold_metric=threshold_metric, report_threshold=report_threshold)
+            
+            #if batches is not None:
+                #y_gt[~masks] = self.negative_class
+                #self.getGraphMetrics(batches[i], y_gt[i], y_pr, metric_values)
+            
+            if masks is not None:    
+                y_gt[i] = y_gt[i][masks[i]]
+                y_pr = y_pr[masks[i]]
+                outs[i] = outs[i][masks[i]]
+            
+            # Compute metrics
+            for metric, kw in self.metrics.items():
+                if metric == 'auprc' or metric == 'auroc':
+                    # AUC metrics
+                    metric_values[metric].append(METRICS_FN[metric](y_gt[i], outs[i], **kw))
+                elif metric == 'smoothness':
+                    # use `getGraphMetrics` for this
+                    continue
+                else:
+                    metric_values[metric].append(METRICS_FN[metric](y_gt[i], y_pr, **kw))
+        for key in metric_values:
+            metric_values[key] = np.mean(metric_values[key])
         
         return metric_values
     
@@ -208,6 +247,8 @@ class Evaluator(object):
         smooth_gt = []
         smooth_pr = []
         ptr = 0
+        if not isinstance(batches, list):
+            batches = [batches]
         for batch in batches:
             edge_index = batch.edge_index.cpu().numpy()
             slc = slice(ptr, ptr + batch.num_nodes)
@@ -219,8 +260,8 @@ class Evaluator(object):
         if "smoothness" in self.metrics:
             smooth_pr = np.mean(smooth_pr)
             smooth_gt = np.mean(smooth_gt)
-            metric_values['smoothness'] = smooth_pr
-            metric_values['smoothness_relative'] = (smooth_pr - smooth_gt)/smooth_gt
+            metric_values['smoothness'].append(smooth_pr)
+            metric_values['smoothness_relative'].append((smooth_pr - smooth_gt)/smooth_gt)
         
         return metric_values
     
