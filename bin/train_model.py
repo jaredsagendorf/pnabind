@@ -59,7 +59,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.nn import DataParallel
 from torch_geometric.data import DataLoader, DataListLoader
-from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures, GenerateMeshNormals, Cartesian
+from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures, GenerateMeshNormals, Cartesian, TwoHop
 
 # Geobind modules
 from geobind.nn.utils import loadDataset, classWeights
@@ -68,44 +68,23 @@ from geobind.nn.models import NetConvPool, PointNetPP, MultiBranchNet, FFNet
 from geobind.nn.metrics import reportMetrics
 from geobind.nn.transforms import GeometricEdgeFeatures, ScaleEdgeFeatures
 
-def getDataTransforms(args, name=None, scale_edge_features=False, **kwargs):
+def getDataTransforms(args):
+    t_lookup = {
+        "FaceToEdge": (FaceToEdge, lambda ob: 0),
+        "GenerateMeshNormals": (GenerateMeshNormals, lambda ob: 0),
+        "TwoHop": (TwoHop, lambda ob: 0),
+        "PointPairFeatures": (PointPairFeatures, lambda ob: 4),
+        "Cartesian": (Cartesian, lambda ob: 3),
+        "GeometricEdgeFeatures": (GeometricEdgeFeatures, lambda ob: ob.edge_dim),
+        "ScaleEdgeFeatures": (ScaleEdgeFeatures, lambda ob: 0)
+    }
     transforms = []
     edge_dim = 0
     for arg in args:
-        if arg["name"] == "FaceToEdge":
-            transforms.append(
-                FaceToEdge(**arg["kwargs"])
-            )
-        elif arg["name"] == "PointPairFeatures":
-            transforms += [
-                FaceToEdge(remove_faces=False),
-                GenerateMeshNormals(),
-                PointPairFeatures(**arg["kwargs"])
-            ]
-            edge_dim = 4
-        elif name == "ppf+cartesian":
-            transforms += [
-                FaceToEdge(remove_faces=False),
-                GenerateMeshNormals(),
-                PointPairFeatures(cat=True),
-                Cartesian(cat=True, norm=False)
-            ]
-            edge_dim = 7
-        elif name == "gef":
-            transforms += [ GeometricEdgeFeatures(**kwargs) ]
-            edge_dim = transforms[-1].edge_dim
-        elif name == "normals":
-            transforms += [
-                FaceToEdge(remove_faces=False),
-                GenerateMeshNormals()
-            ]
-            edge_dim = None
-        elif name == "face_to_edge":
-            transforms += [ FaceToEdge(remove_faces=False) ]
-            edge_dim = None
-    
-    if scale_edge_features:
-        transforms += [ScaleEdgeFeatures(method=kwargs["edge_scaling_method"])]
+        t = t_lookup[arg["name"]][0](**arg.get("kwargs", {}))
+        edge_dim += t_lookup[arg["name"]][1](t)
+        
+        transforms.append(t)
     
     return Compose(transforms), edge_dim
 
@@ -199,10 +178,10 @@ valid_datafiles = [_.strip() for _ in open(ARGS.valid_file).readlines()]
 
 remove_mask = (C["balance"] == 'all')
 if C["model"]["name"] == "MultiBranchNet":
-    tkwargs = C["model"]["kwargs"]["kwargs2"]["transform_args"]
+    trans_args = C["model"]["kwargs"]["kwargs2"].get("transform_args", [])
 else:
-    tkwargs = C["model"]["kwargs"].get("transform_args", {})
-transform, edge_dim = getDataTransforms(**tkwargs)
+    trans_args = C["model"]["kwargs"].get("transform_args", [])
+transform, edge_dim = getDataTransforms(trans_args)
 feature_mask = C.get("feature_mask", None)
 
 train_dataset, transforms, train_info = loadDataset(train_datafiles, C["nc"], C["labels_key"], C["data_dir"],
