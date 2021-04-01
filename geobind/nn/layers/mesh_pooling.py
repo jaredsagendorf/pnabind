@@ -11,7 +11,8 @@ from torch_geometric.utils import softmax
 from torch_geometric.nn import EdgePooling
 from torch_geometric.data import Data
 
-#import trimesh
+# geobind modules
+from geobind.nn.utils import MLP
 
 class Decimator(object):
     @staticmethod
@@ -39,7 +40,7 @@ class Decimator(object):
         return Q # [V, 4, 4]
     
     @staticmethod
-    def computePairCost(E, Q, V, edge_scores=None, normalize_costs=False, alpha=-1):
+    def computePairCost(E, Q, V, normalize_costs=False):
         Ne = len(E)
         
         # first we must compute the solution of v(Qi + Qj) = [0,0,0,1]
@@ -57,31 +58,25 @@ class Decimator(object):
                 # the matrix q is not invertable, fall back to mean of vertex positions
                 vij[ei] = (V[E[ei,0]] + V[E[ei,1]])/2
         
-        # compute cost vij'*(Qi + Qj)*vij - sij for every pair
+        # compute cost vij'*(Qi + Qj)*vij for every pair
         costs = (vij*(Qij*vij[:,np.newaxis]).sum(axis=2)).sum(axis=1)
         
         if normalize_costs:
             costs = (costs - costs.mean())/costs.std()
         
-        if edge_scores is not None:
-            costs = costs + alpha*edge_scores
-        
         return vij, costs
     
-    def __init__(self, data, edge_scores, check_manifold=True, normalize_costs=True, alpha=None):
+    def __init__(self, data, check_manifold=True, check_triangle_flip=False, normalize_costs=False):
         # Get basic numpy arrays we will need
         self.V = data.pos.cpu().numpy()
-        self.F = data.face.cpu().numpy().T
+        self.F = data.face.cpu().numpy().copy().T
         self.E = data.edge_index.cpu().numpy().copy().T
-         
+        
         # Create face normals
         vec1 = self.V[self.F[:,1]] - self.V[self.F[:,0]]
         vec2 = self.V[self.F[:,2]] - self.V[self.F[:,0]]
-        face_normals = np.cross(vec1, vec2, axis=1)
-        self.N = face_normals/np.linalg.norm(face_normals, axis=1)[:,np.newaxis] # [F, 3]
-        
-        if edge_scores is not None:
-            edge_scores = edge_scores.cpu().detach().numpy()
+        face_normals = np.cross(vec1, vec2, axis=1)# + 1e-5 # ensure no zero vector
+        self.N = face_normals/(np.linalg.norm(face_normals, axis=1)[:,np.newaxis]) # [F, 3]
         
         self.num_vertices = len(self.V)
         self.num_faces = len(self.F)
@@ -89,10 +84,10 @@ class Decimator(object):
         
         # Compute quadratic error metrics
         self.Q = self.computeErrorMetrics(self.V, self.F, self.N)
-        self.V = np.concatenate([self.V, np.ones((self.num_vertices, 1))], axis=1) # add column of ones
         
         # Compute costs of edges
-        self.Vopt, self.edge_costs = self.computePairCost(self.E, self.Q, self.V, edge_scores, normalize_costs=normalize_costs, alpha=alpha)
+        self.V = np.concatenate([self.V, np.ones((self.num_vertices, 1))], axis=1) # add column of ones
+        self.Vopt, self.edge_costs = self.computePairCost(self.E, self.Q, self.V, normalize_costs=normalize_costs)
         
         if check_manifold:
             # construct vertex-vertex adjacency
@@ -104,112 +99,159 @@ class Decimator(object):
             self.vertex_adjacency = vertex_adjacency
             
             # construct vertex-edge adjacency
-            vertex_edges = [{"i": [], "j": []} for _ in range(self.num_vertices)]
+            vertex_edges = [{"ei": [], "ej": []} for _ in range(self.num_vertices)]
             for i in range(self.num_edges):
                 source, target = self.E[i]
-                vertex_edges[source]["i"].append(i)
-                vertex_edges[source]["j"].append(0)
-                vertex_edges[target]["i"].append(i)
-                vertex_edges[target]["j"].append(1)
+                vertex_edges[source]["ei"].append(i)
+                vertex_edges[source]["ej"].append(0)
+                vertex_edges[target]["ei"].append(i)
+                vertex_edges[target]["ej"].append(1)
             self.vertex_edges = vertex_edges
+        
+        if check_triangle_flip:
+            # construct vertex-face adjacency
+            vertex_faces = [set() for _ in range(self.num_vertices)]
+            for i in range(self.num_faces):
+                vertex_faces[self.F[i,0]].add(i)
+                vertex_faces[self.F[i,1]].add(i)
+                vertex_faces[self.F[i,2]].add(i)
+            self.vertex_faces = vertex_faces
         
         # Other parameters
         self.check_manifold = check_manifold
-        self._vi = self.num_vertices - 1 # vertex index counter
+        self.check_triangle_flip = check_triangle_flip
     
-    @property
-    def vertex_index(self):
-        self._vi += 1
-        return self._vi
-        
-    def mergeVertices(self, source, target):
+    def mergeVertices(self, ei):
         # replace source and target with a new vertex index
-        v = self.vertex_index
+        # v = self.vertex_index
+        # replace min(e) with max(e)
+        source = self.E[ei].min()
+        target = self.E[ei].max()
         
-        # update source edges
-        ei = self.vertex_edges[source]["i"]
-        ej = self.vertex_edges[source]["j"]
-        self.E[ei, ej] = v
+        if self.check_manifold:
+            # update edge source -> target
+            ei = self.vertex_edges[source]["ei"]
+            ej = self.vertex_edges[source]["ej"]
+            self.E[ei, ej] = target
+            
+            # # update target edges
+            # ei = self.vertex_edges[target]["edge_index"]
+            # ej = self.vertex_edges[target]["source_or_target"]
+            # self.E[ei, ej] = v
+            
+            # update vertex adjacency
+            #print(target, self.vertex_adjacency[target])
+            #print(source, self.vertex_adjacency[source])
+            neighbors_source = self.vertex_adjacency[source]
+            for n in neighbors_source:
+                self.vertex_adjacency[n].remove(source)
+                self.vertex_adjacency[n].add(target)
+            self.vertex_adjacency[target].update(neighbors_source)
+            self.vertex_adjacency[target].remove(target)
+            #print(target,self.vertex_adjacency[target])
+            
+            
+            #neighbors_target = self.vertex_adjacency[target]
+            #neighbors_target.remove(source)
+            # for n in neighbors_target:
+                # self.vertex_adjacency[n].remove(target)
+                # self.vertex_adjacency[n].add(v)
+            
+            #self.vertex_adjacency.append(neighbors_source.union(neighbors_target))
         
-        # update target edges
-        ei = self.vertex_edges[target]["i"]
-        ej = self.vertex_edges[target]["j"]
-        self.E[ei, ej] = v
-        
-        # update vertex adjacency
-        neighbors_source = self.vertex_adjacency[source]
-        neighbors_source.remove(target)
-        for n in neighbors_source:
-            self.vertex_adjacency[n].remove(source)
-            self.vertex_adjacency[n].add(v)
-        
-        neighbors_target = self.vertex_adjacency[target]
-        neighbors_target.remove(source)
-        for n in neighbors_target:
-            self.vertex_adjacency[n].remove(target)
-            self.vertex_adjacency[n].add(v)
-        
-        self.vertex_adjacency.append(neighbors_source.union(neighbors_target))
+        if self.check_triangle_flip:
+            # remove collapsed faces from face adjacency
+            si = self.vertex_faces[source].intersection(self.vertex_faces[target]) # shared faces
+            for i in si:
+                for j in range(3):
+                    if i in self.vertex_faces[self.F[i,j]]:
+                        self.vertex_faces[self.F[i,j]].remove(i)
+            
+            # move source->target in face indices
+            fi = list(self.vertex_faces[source]) # all faces adjacent to source
+            fmask = np.argwhere(self.F[fi] == source)[:,1]
+            self.F[fi, fmask] = target
     
-    def manifoldEdge(self, source, target):
+    def manifoldEdgeCheck(self, source, target):
         # check size of the one-ring of the edge [source, target]
         one_ring_intersection = self.vertex_adjacency[source].intersection(self.vertex_adjacency[target])
         
         return len(one_ring_intersection) == 2
     
+    def triangleFlipCheck(self, ei):
+        source, target = self.E[ei]
+        
+        # move vertices to hypothetical update location
+        x_source = self.V[source].copy()
+        x_target = self.V[target].copy()
+        
+        self.V[source] = self.Vopt[ei]
+        self.V[target] = self.Vopt[ei]
+        
+        # get indices of faces which share either vertex but not both
+        fi = list(self.vertex_faces[source].symmetric_difference(self.vertex_faces[target]))
+        
+        # compute normals
+        vectors = np.diff(self.V[self.F[fi]][:,:,0:3], axis=1)
+        new_N = np.cross(vectors[:,0], vectors[:,1])
+        old_N = self.N[fi]
+        
+        # check if normals changed sign
+        if np.any((new_N*old_N).sum(axis=1) <= 0):
+            # print(fi)
+            # print(self.V[self.F[fi]])
+            # print(vectors)
+            # print((new_N*old_N).sum(axis=1))
+            # print(old_N)
+            # print(new_N)
+            # put vertex positions back
+            self.V[source] = x_source
+            self.V[target] = x_target
+            return False
+        else:
+            # update normals
+            self.N[fi] = new_N
+            return True
+    
+    
     def contractEdge(self, ei):
         source, target = self.E[ei]
-        # check if this contraction is valid
-        #if check_normals and checkNormalsFlip(ei, E, F, N, vopt, V):
-            # invalid, return empty list
-            #print("triangle flip!", E[ei])
-            #mesh = trimesh.Trimesh(vertices=V, faces=F, process=False)
-            #fmask = (F == E[ei][0]).any(axis=1) + (F == E[ei][1]).any(axis=1)
-            #mesh.update_faces(fmask)
-            #mesh.export("debug.off")
-            #exit(0)
-            #return [], []
-            #return False
         
-        if self.check_manifold and not self.manifoldEdge(source, target):
-            # invalid, return empty list
-            #return [], []
-            #print(self.vertex_adjacency[source])
-            #print(self.vertex_adjacency[target])
-            #print(one_ring_intersection)
-            #print(self.V[list(one_ring_intersection)])
-            #print("non-manifold contraction!", self.E[ei])
-            #mesh = trimesh.Trimesh(vertices=self.V[:,0:3], faces=self.F, process=False)
-            #fmask = (self.F == target).any(axis=1) + (self.F == source).any(axis=1)
-            #mesh.update_faces(fmask)
-            #mesh.export("debug.off")
-            #exit(0)
+        # check if this contraction is valid
+        if self.check_manifold and not self.manifoldEdgeCheck(source, target):
+            # import trimesh
+            # print("non-manifold edge!", self.E[ei])
+            # self.V[source] = self.Vopt[ei]
+            # self.V[target] = self.Vopt[ei]
+            # fi = list(self.vertex_faces[source].union(self.vertex_faces[target]))
+            # mesh = trimesh.Trimesh(vertices=self.V, faces=self.F[fi], process=False)
+            # #fmask = (self.F == self.E[ei][0]).any(axis=1) + (self.F == self.E[ei][1]).any(axis=1)
+            # #mesh.update_faces(fmask)
+            # mesh.export("non-manifold.off")
+            # exit(0)
             return False
         
-        # move source and target to optimal position
-        self.V[target] = self.Vopt[ei]
-        #V[source] = 0.0#vopt[ei]
+        if self.check_triangle_flip and not self.triangleFlipCheck(ei):
+            # import trimesh
+            # print("triangle flip!", self.E[ei])
+            # self.V[source] = self.Vopt[ei]
+            # self.V[target] = self.Vopt[ei]
+            # fi = list(self.vertex_faces[source].union(self.vertex_faces[target]))
+            # mesh = trimesh.Trimesh(vertices=self.V, faces=self.F[fi], process=False)
+            # #fmask = (self.F == self.E[ei][0]).any(axis=1) + (self.F == self.E[ei][1]).any(axis=1)
+            # #mesh.update_faces(fmask)
+            # mesh.export("flipped.off")
+            # exit(0)
+            return False
         
-        # update error metric
-        #q = Q[source] + Q[target]
-        #Q[target] = q
-        #Q[source] = q
+        if not self.check_triangle_flip:
+            # move source and target to optimal position
+            self.V[target] = self.Vopt[ei]
+            self.V[source] = self.Vopt[ei]
         
-        # update all edges containing source to now point to target
-        #emask = (E == source)
-        #E[emask[:,0], 0] = target
-        #E[emask[:,1], 1] = target
-        if self.check_manifold:
-            self.mergeVertices(source, target)
+        if self.check_manifold or self.check_triangle_flip:
+            self.mergeVertices(ei)
         
-        #ei = np.argwhere(np.bitwise_or.reduce(emask, axis=1)).flatten()
-        #ei, fi = mesh.mergeNodes(source, target)
-        
-        # update costs and optimal positions of the updated edges containing target
-        #vij, costs = MeshPooling.computePairCost(E[ei], scores[ei], Q, V)
-        #vopt[ei] = vij
-        
-        #return ei, costs
         return True
 
 class PriorityQueue(object):
@@ -250,8 +292,17 @@ class PriorityQueue(object):
 
 class MeshPooling(EdgePooling):
     def __init__(self, in_channels, edge_dim,
-            dropout=0.0, pre_transform=None, post_transform=None, aggr="diff", alpha=-1.0,
-            check_normals=False, check_manifold=False, edge_score_method=None, add_to_edge_score=0.5
+            dropout=0.0,
+            pre_transform=None,
+            post_transform=None,
+            aggr="diff",
+            check_triangle_flip=True,
+            check_manifold=True,
+            edge_score_method=None,
+            normalize_qe=False,
+            batch_norm=False,
+            act=None,
+            add_to_edge_score=0.5
         ):
         super().__init__(in_channels,
             add_to_edge_score=add_to_edge_score,
@@ -262,21 +313,22 @@ class MeshPooling(EdgePooling):
         # parameters
         self.edge_dim = edge_dim
         self.aggr = aggr
-        self.check_normals = check_normals
+        self.check_triangle_flip = check_triangle_flip
         self.check_manifold = check_manifold
-        self.alpha = alpha
+        self.normalize_qe = normalize_qe
         
         # edge feature transforms
         self.pre_transform = pre_transform
         self.post_transform = post_transform
         
         # learnable parameters
-        if alpha is not None:
-            if aggr == "cat":
-                self.lin = torch.nn.Linear(2*in_channels + edge_dim, 1)
-            else:
-                self.lin = torch.nn.Linear(in_channels + edge_dim, 1)
-            self.reset_parameters()
+        if aggr == "cat":
+            channels = [2*in_channels + edge_dim, 1]
+        else:
+            channels = [in_channels + edge_dim, 1]
+        self.lin1 = MLP(channels, batch_norm=batch_norm, act=act)
+        self.lin2 = torch.nn.Linear(2, 1)
+        self.reset_parameters()
     
     def forward(self, x, data):
         if self.pre_transform:
@@ -284,45 +336,52 @@ class MeshPooling(EdgePooling):
         
         edge_index, edge_attr = data.edge_index, data.edge_attr
         
-        if self.alpha is not None:
-            # compute the edge scores
-            if self.aggr == "diff":
-                e = torch.cat([torch.abs(x[edge_index[0]] - x[edge_index[1]]), edge_attr], dim=-1)
-            elif self.aggr == "mean":
-                e = torch.cat([(x[edge_index[0]] + x[edge_index[1]])/2, edge_attr], dim=-1)
-            elif self.aggr == "sum":
-                e = torch.cat([(x[edge_index[0]] + x[edge_index[1]]), edge_attr], dim=-1)
-            elif self.aggr == "max":
-                e = torch.cat([torch.maximum(x[edge_index[0]], x[edge_index[1]]), edge_attr], dim=-1)
-            elif self.aggr == "cat":
-                e = torch.cat([x[edge_index[0]], x[edge_index[1]], edge_attr], dim=-1)
-            else:
-                raise ValueError("Unsupported option '{}' for aggregation method.".format(self.aggr))
-            
-            e = self.lin(e).view(-1)
-            e = F.dropout(e, p=self.dropout, training=self.training)
-            e = self.compute_edge_score(e, edge_index, x.size(0))
-            e = e + self.add_to_edge_score
+        # compute the edge scores
+        if self.aggr == "diff":
+            ex = torch.cat([torch.abs(x[edge_index[0]] - x[edge_index[1]]), edge_attr], dim=-1)
+        elif self.aggr == "mean":
+            ex = torch.cat([(x[edge_index[0]] + x[edge_index[1]])/2, edge_attr], dim=-1)
+        elif self.aggr == "sum":
+            ex = torch.cat([(x[edge_index[0]] + x[edge_index[1]]), edge_attr], dim=-1)
+        elif self.aggr == "max":
+            ex = torch.cat([torch.maximum(x[edge_index[0]], x[edge_index[1]]), edge_attr], dim=-1)
+        elif self.aggr == "cat":
+            ex = torch.cat([x[edge_index[0]], x[edge_index[1]], edge_attr], dim=-1)
         else:
-            e = None
+            raise ValueError("Unsupported option '{}' for aggregation method.".format(self.aggr))
+        
+        ex = self.lin1(ex).view(-1, 1)
+        ex = F.dropout(ex, p=self.dropout, training=self.training)
+        
+        # Get quadratic errors
+        decimator = Decimator(data, 
+                check_manifold=self.check_manifold,
+                normalize_costs=self.normalize_qe,
+                check_triangle_flip=self.check_triangle_flip
+        )
+        errors = torch.tensor(decimator.edge_costs, dtype=torch.float32).view(-1, 1).to(ex.device)
+        
+        # combine
+        ex = torch.cat([ex, errors], dim=-1)
+        ex = self.lin2(ex).view(-1)
+        ex = self.compute_edge_score(ex, edge_index, x.size(0))
+        ex = ex + self.add_to_edge_score
         
         # perform mesh decimation
-        new_x, new_data = self.__merge_edges__(x, data, e)
+        new_x, new_data = self.__merge_edges__(x, data, ex, decimator)
+        
         if self.post_transform:
             new_data = self.post_transform(new_data)
         
         return new_x, new_data
     
-    def __merge_edges__(self, x, data, edge_score):
+    def __merge_edges__(self, x, data, edge_score, decimator):
         # Torch tensors
         batch = data.batch
         edge_index = data.edge_index
-        
-        # Get mesh decimator object
-        decimator = Decimator(data, edge_score, check_manifold=self.check_manifold, alpha=self.alpha)
 
         # Build a priority queue to store edge costs and store which nodes are still valid
-        PQ = PriorityQueue([(decimator.edge_costs[i], i) for i in range(decimator.num_edges)])
+        PQ = PriorityQueue([(edge_score[i].item(), i) for i in range(len(edge_score))])
         
         # Loop over edges, contracting edges and updating node positions
         nodes_remaining = set(range(decimator.num_vertices))
@@ -345,10 +404,6 @@ class MeshPooling(EdgePooling):
                 if source != target:
                     nodes_remaining.remove(target)
                     cluster[target] = i
-                
-                ## update edge costs
-                #for j in range(len(updated_edges)):
-                    #PQ.addItem(updated_edges[j], updated_costs[j])
                 
                 i += 1
                 new_edge_indices.append(ei)
