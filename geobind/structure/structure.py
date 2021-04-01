@@ -77,7 +77,7 @@ class StructureData(object):
             mid = item[1]
             cid = item[2]
             rid = item[3]
-            ent[mid][cid].add(obj[mid][cid][rid])
+            ent[mid][cid].add(obj[mid][cid][rid].copy())
         
         return cls(ent, name=name)
     

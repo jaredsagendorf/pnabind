@@ -2,20 +2,20 @@
 import logging
 import argparse
 from os.path import join as ospj
+from glob import glob
 
 import numpy as np
 import trimesh
 from Bio.PDB import PDBParser
-from scipy.spatial import cKDTree
 
-from geobind.nn.utils import getMetrics, report
-from geobind.structure import getAtomKDTree, getDSSP
+from geobind.nn.metrics import report
+from geobind.structure import getAtomKDTree, StructureData, getAtomSESA
+from geobind.utils import oneHotEncode
+from geobind.structure.data import data as D
 
 arg_parser = argparse.ArgumentParser()
-arg_parser.add_argument("data_file", help="list of file prefixes")
-arg_parser.add_argument("-M", "--mesh_dir", default=".", help="mesh file directory prefix")
+arg_parser.add_argument("path", help="directory where .npz files are located")
 arg_parser.add_argument("-P", "--pdb_dir", default=".", help="pdb file directory prefix")
-arg_parser.add_argument("-L", "--label_dir", default=".", help="label file directory prefix")
 arg_parser.add_argument("-t", "--threshold", type=float, default=0.5, help="threshold for evaluating single-point metrics")
 arg_parser.add_argument("-l", "--level", default="R", help="level at which to perform mapping")
 arg_parser.add_argument("-o", "--output", default="log", choices=["log", "csv"])
@@ -23,14 +23,13 @@ ARGS = arg_parser.parse_args()
 
 logging.basicConfig(format='%(levelname)s:    %(message)s', level=logging.INFO)
 
-
 def mapVertexLabelsToStructure(vertices, atom_list, vertex_labels, weighting='binary', weights=None, level='R', kdtree=None, nc=None):
     # determine number of classes
-    if(nc is None):
+    if nc is None:
         nc = np.unique(vertex_labels).size
     
     # build a KDTree for structure if one is not provided
-    if(kdtree is None):
+    if kdtree is None:
         kdtree = getAtomKDTree(atom_list)
     
     for atom in atom_list:
@@ -76,133 +75,140 @@ def mapVertexLabelsToStructure(vertices, atom_list, vertex_labels, weighting='bi
         
         return residue_dict
 
-def mapVertexProbabilitiesToStructure(vertices, atom_list, probabilities, level='A', kdtree=None, nc=None):
-    # determine number of classes
-    if(nc is None):
-        if(probabilities.ndim == 1):
-            nc = np.unique(probabilities).size
-        else:
-            nc = probabilities.shape[1]
+def mapVertexProbabilitiesToStructure(vertices, atom_list, P, nc, level='A', kdtree=None, vertex_weights=None, reduce_method='mean'):
     
     # one hot encode if given labels vector
-    if(probabilities.ndim == 1):
-        p = np.zeros((probabilities.size, nc))
-        p[np.arange(p.shape[0]), probabilities] = 1
-        probabilities = p
+    if P.ndim == 1:
+        P = oneHotEncode(P, nc)
     
     # build a KDTree for structure if one is not provided
-    if(kdtree is None):
+    if kdtree is None:
         kdtree = getAtomKDTree(atom_list)
     
     # reset values if atom list was used prior
     for atom in atom_list:
-        if('p' in atom.xtra):
-            atom.xtra['p'] = np.zeros(nc)
-            atom.xtra['vcount'] = 0
-            
+        atom.xtra['p'] = np.zeros(nc)
+        atom.xtra['v_weight'] = 0
+    
     # find nearest-neighbor atoms and add probabilities
     dist, ind = kdtree.query(vertices)
     for i in range(len(ind)):
         ai = ind[i]
         vi = i
-        if('p' not in atom_list[ind[i]].xtra):
-            atom_list[ai].xtra['p'] = np.zeros(nc)
-            atom_list[ai].xtra['vcount'] = 0
-        atom_list[ai].xtra['p'] += probabilities[vi]
-        atom_list[ai].xtra['vcount'] += 1
+        atom_list[ai].xtra['p'] += P[vi]*vertex_weights[vi]
+        atom_list[ai].xtra['v_weight'] += vertex_weights[vi]
     
     # normalize probabilities
     for atom in atom_list:
-        if('p' in atom.xtra):
-            atom.xtra['p'] = atom.xtra['p']/atom.xtra['vcount']
+        if atom.xtra['v_weight'] > 0:
+            atom.xtra['p'] = atom.xtra['p']/atom.xtra['v_weight']
     
     # return list of entities with aggregated probabilities
-    if(level == 'A'):
-        atom_dict = {}
-        for atom in atom_list:
-            if('p' in atom.xtra):
-                atom_dict[atom.get_full_id()] = atom.xtra['p']
+    if level == 'A':
+        atom_dict = {atom.get_full_id(): atom.xtra['p'] for atom in atom_list}
         return atom_dict
-    elif(level == 'R'):
+    elif level == 'R':
         residue_dict = {}
         # aggregate over atom probabilities
         for atom in atom_list:
-            if('p' in atom.xtra):
-                residue = atom.get_parent()
-                residue_id = residue.get_full_id()
-                if(residue_id not in residue_dict):
-                    residue_dict[residue_id] = {}
-                    residue_dict[residue_id]['p'] = np.zeros(nc)
-                    residue_dict[residue_id]['acount'] = 0
-                residue_dict[residue_id]['p'] += atom.xtra['p']
-                residue_dict[residue_id]['acount'] += 1
+            residue = atom.get_parent()
+            residue_id = residue.get_full_id()
+            if residue_id not in residue_dict:
+                residue_dict[residue_id] = []
+            residue_dict[residue_id].append(atom.xtra['p'])
         
-        # normalize residue probabilities
+        # reduce residue probabilities
         for residue_id in residue_dict:
-            residue_dict[residue_id] = residue_dict[residue_id]['p']/residue_dict[residue_id]['acount']
+            residue_dict[residue_id] = np.concatenate(residue_dict[residue_id], axis=0)
+            if reduce_method == 'mean':
+                residue_dict[residue_id] = np.mean(residue_dict[residue_id], axis=0)
+            elif reduce_method == 'max':
+                residue_dict[residue_id] = np.max(residue_dict[residue_id], axis=0)
         
         return residue_dict
 
-def getLoopContent(structure, fileName):
-    getDSSP(structure[0], fileName)
-    acount = 0
-    lcount = 0
-    for atom in structure[0].get_atoms():
-        lcount += atom.xtra.get('ss_L', 0)
-        acount += 1
+def getProtein(structure, regexes, mi=0):
+    """Docstring"""
+    pro = []
+    for chain in structure[mi]:
+        for residue in chain:
+            resname = residue.get_resname()
+            if regexes['PROTEIN']['STANDARD_RESIDUES'].search(resname):
+                pro.append(residue.get_full_id())
     
-    return lcount/acount
+    return structure.slice(structure, pro, 'protein')
 
-def getMeanBFactor(structure):
-    acount = 0
-    bfactor = 0
+# def getLoopContent(structure, fileName):
+    # getDSSP(structure[0], fileName)
+    # acount = 0
+    # lcount = 0
+    # for atom in structure[0].get_atoms():
+        # lcount += atom.xtra.get('ss_L', 0)
+        # acount += 1
     
-    for atom in structure.get_atoms():
-        acount += 1
-        bfactor += atom.bfactor
+    # return lcount/acount
+
+# def getMeanBFactor(structure):
+    # acount = 0
+    # bfactor = 0
     
-    return bfactor/acount
+    # for atom in structure.get_atoms():
+        # acount += 1
+        # bfactor += atom.bfactor
+    
+    # return bfactor/acount
 
 pdb_parser = PDBParser()
-Y = []
-P = []
 use_header=True
-if(ARGS.output == 'csv'):
+if ARGS.output == 'csv':
     csv = open('data.csv', 'w')
-for filePrefix in open(ARGS.data_file):
-    filePrefix = filePrefix.strip()
+
+for f in glob(ospj(ARGS.path, '*.npz')):
+    f = f.lstrip('./')
+    
+    # load data file
+    data = np.load(f)
     
     # load PDB structure
-    pdbfile =  ospj(ARGS.pdb_dir, filePrefix.rstrip("_protein")+".pdb")
-    structure = pdb_parser.get_structure('structure', pdbfile)
-    atoms = [atom for atom in structure.get_atoms()]
+    pdbfile = ospj(ARGS.pdb_dir, f.rstrip("_predict.npz") + ".pdb")
+    
+    # apply same processing as on training data
+    fname = f.rstrip("_predict.npz") + ".pdb"
+    structure = StructureData(fname, name=fname, path=ARGS.pdb_dir)
+    protein = getProtein(structure, D.regexes)
+    
+    # Clean the protein entity
+    protein, pqr = geobind.structure.cleanProtein(protein hydrogens=True)
+    
+    # get atoms with sesa > 0
+    getAtomSESA(protein)
+    atoms = [atom if atom.xtra['sesa'] > 0 for atom in structure.get_atoms()]
     
     # load mesh file
-    mesh = trimesh.load(ospj(ARGS.mesh_dir, filePrefix+"_mesh.off"), process=False, validate=False)
+    mesh = trimesh.Trimesh(vertices=data['V'], faces=data['F'], process=False, validate=False)
     
     # load vertex data
-    Ygt = np.load(ospj(ARGS.label_dir, filePrefix+"_vertex_labels.npy"))
-    #Ypr = np.load(ospj(ARGS.label_dir, filePrefix+"_vertex_labels_p.npy"))
-    Ppr = np.load(ospj(ARGS.label_dir, filePrefix+"_vertex_probs.npy"))
-    Ygt[Ygt < 0] = 0 # remove mask
+    Y = data['Y']
+    P = data['P']
+    Y[Y < 0] = 0 # remove mask
     
     kdt = getAtomKDTree(atoms)
     #Rd_gt = mapVertexLabelsToStructure(mesh.vertices, atoms, Ygt, kdtree=kdt, level='A')
     #Rd_pr = mapVertexLabelsToStructure(mesh.vertices, atoms, Ypr, kdtree=kdt, level='A')
-    map_gt = mapVertexProbabilitiesToStructure(mesh.vertices, atoms, Ygt, kdtree=kdt, level=ARGS.level)
-    map_pr = mapVertexProbabilitiesToStructure(mesh.vertices, atoms, Ppr, kdtree=kdt, level=ARGS.level)
+    map_gt = mapVertexProbabilitiesToStructure(mesh.vertices, atoms, Ygt, 2, kdtree=kdt, level=ARGS.level, reduce_method='max')
+    map_pr = mapVertexProbabilitiesToStructure(mesh.vertices, atoms, Ppr, 2, kdtree=kdt, level=ARGS.level, reduce_method='max')
     
     y = []
     p = []
     for key in map_gt:
         y.append(map_gt[key])
         p.append(map_pr[key])
-    Y += y
-    P += p
     
-    y = (np.array(y)[:,1] >= 0.5)
+    y = (np.array(y) >= 0.5)
+    p = np.array(p)
     metrics = getMetrics(y, p, threshold=ARGS.threshold)
-    if(ARGS.output == 'csv'):
+    
+    if ARGS.output == 'csv':
         mkeys = sorted(metrics.keys())
         data = list(map(lambda key: metrics[key], mkeys))
         data += [len(mesh.vertices), len(atoms), getLoopContent(structure, pdbfile), getMeanBFactor(structure)]
@@ -219,9 +225,7 @@ for filePrefix in open(ARGS.data_file):
             header=use_header
         )
     use_header=False
-if(ARGS.output == 'csv'):
+
+if ARGS.output == 'csv':
     csv.close()
-Y = (np.array(Y)[:,1] >= 0.5)
-P = np.array(P)
-metrics = getMetrics(Y, P, threshold=ARGS.threshold)
-report([(metrics, 'summary')], header=True)
+

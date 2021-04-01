@@ -6,7 +6,7 @@ import shutil
 import logging 
 
 # geobind modules
-from geobind.utils import Interpolator, logOutput
+from geobind.utils import Interpolator
 
 def padCoordinates(pqrFile):
     padded = open("tmp.pqr", "w")
@@ -21,7 +21,7 @@ def padCoordinates(pqrFile):
     padded.close()
     shutil.move("tmp.pqr", pqrFile)
 
-def runAPBS(structure, prefix="tmp", basedir='.', quiet=True, pqr=None, clean=True):
+def runAPBS(structure, prefix="tmp", basedir='.', quiet=True, pqr=None, clean=True, space=0.3, cfac=1.7):
     """ run APBS and return potential """
     if(pqr is None):
         tmp = os.path.join(basedir, "{}.pdb".format(prefix))
@@ -41,13 +41,12 @@ def runAPBS(structure, prefix="tmp", basedir='.', quiet=True, pqr=None, clean=Tr
             ],
             stderr=subprocess.STDOUT
         )
-        #logOutput(outpt, logging.info)
     
     # APBS will have issues reading PQR file if coordinate fields touch
     padCoordinates(pqr)
     
     # run psize to get grid length parameters
-    stdout = subprocess.getoutput("psize --space 0.3 '{}'".format(pqr))
+    stdout = subprocess.getoutput("psize --space={} --cfac={} '{}'".format(space, cfac, pqr))
     cglenMatch = re.search('Coarse grid dims = (\d*\.?\d+) x (\d*\.?\d+) x (\d*\.?\d+) A', stdout, re.MULTILINE)
     cgx = cglenMatch.group(1)
     cgy = cglenMatch.group(2)
@@ -109,7 +108,6 @@ END""".format(
     
     logging.info("Running APBS on input file: %s", inFile)
     outpt = subprocess.check_output(["apbs", inFile], stderr=subprocess.STDOUT)
-    #logOutput(outpt, logging.info)
     
     # cleanup
     if(clean):

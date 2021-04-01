@@ -2,6 +2,7 @@
 import numpy as np
 import trimesh
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import scale
 
 def getVectorAngle(v1, v2):
     return np.arctan2(np.linalg.norm(np.cross(v1, v2, axis=1), axis=1), (v1 * v2).sum(axis=1))
@@ -26,17 +27,9 @@ def getPPFeatures(mesh, edge_index, edge_attr=None):
     
     return features
 
-def getGeometricEdgeFeatures(mesh, directed_edges=True, pp_features=True, triangle_features=True, n_components=0):
+def getGeometricEdgeFeatures(mesh, directed_edges=True, pp_features=True, triangle_features=True, n_components=0, normalize=True):
 
     assert np.all(mesh.edges_unique == mesh.face_adjacency_edges)
-    #if not np.all(mesh.edges_unique == mesh.face_adjacency_edges):
-        #trimesh.repair.fill_holes(mesh)
-        #print(mesh.is_watertight)
-        #print("edges_unique:", mesh.edges_unique.shape)
-        #print("face_adjaceny_edges:", mesh.face_adjacency_edges.shape)
-        #print(mesh.edges.T)
-        #mesh.export("mesh_error.off")
-        #exit(0)
     
     edge_attr = []
     if triangle_features:
@@ -74,7 +67,12 @@ def getGeometricEdgeFeatures(mesh, directed_edges=True, pp_features=True, triang
         if pp_features:
             edge_attr = getPPFeatures(mesh, edge_index, edge_attr)
     
+    if normalize:
+        edge_attr = scale(edge_attr)
+    
     if n_components > 0:
-        edge_attr = PCA(n_components=n_components, copy=False).fit_transform(edge_attr)
+        pca = PCA(n_components=n_components, copy=True, svd_solver="arpack")
+        pca.fit(edge_attr)
+        edge_attr = pca.transform(edge_attr)
     
     return edge_index, edge_attr

@@ -161,11 +161,11 @@ class Trainer(object):
             # compute metrics
             if (epoch % eval_every == 0) and (self.evaluator is not None):
                 metrics = {}
-                metrics['train'] = self.evaluator.getMetrics(dataset, report_threshold=True)
+                metrics['train'] = self.evaluator.getMetrics(dataset, eval_mode=True, report_threshold=True, threshold=0.5, metrics_calculation="average_batches")
                 metrics['train']['loss'] = epoch_loss/(n + 1e-5)
                 
                 if(validation_dataset is not None):
-                    metrics['validation'] = self.evaluator.getMetrics(validation_dataset)
+                    metrics['validation'] = self.evaluator.getMetrics(validation_dataset, eval_mode=True, threshold=0.5, metrics_calculation="average_batches")
                 
                 # report performance
                 if(not self.quiet):

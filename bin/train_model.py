@@ -59,14 +59,34 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.nn import DataParallel
 from torch_geometric.data import DataLoader, DataListLoader
-from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures, GenerateMeshNormals
+from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures, GenerateMeshNormals, Cartesian, TwoHop
 
 # Geobind modules
 from geobind.nn.utils import loadDataset, classWeights
 from geobind.nn import Trainer, Evaluator
-from geobind.nn.models import NetConvPool, PointNetPP, MultiBranchNet
+from geobind.nn.models import NetConvPool, PointNetPP, MultiBranchNet, FFNet
 from geobind.nn.metrics import reportMetrics
 from geobind.nn.transforms import GeometricEdgeFeatures, ScaleEdgeFeatures
+
+def getDataTransforms(args):
+    t_lookup = {
+        "FaceToEdge": (FaceToEdge, lambda ob: 0),
+        "GenerateMeshNormals": (GenerateMeshNormals, lambda ob: 0),
+        "TwoHop": (TwoHop, lambda ob: 0),
+        "PointPairFeatures": (PointPairFeatures, lambda ob: 4),
+        "Cartesian": (Cartesian, lambda ob: 3),
+        "GeometricEdgeFeatures": (GeometricEdgeFeatures, lambda ob: ob.edge_dim),
+        "ScaleEdgeFeatures": (ScaleEdgeFeatures, lambda ob: 0)
+    }
+    transforms = []
+    edge_dim = 0
+    for arg in args:
+        t = t_lookup[arg["name"]][0](**arg.get("kwargs", {}))
+        edge_dim += t_lookup[arg["name"]][1](t)
+        
+        transforms.append(t)
+    
+    return Compose(transforms), edge_dim
 
 ####################################################################################################
 # Load the config file
@@ -83,8 +103,8 @@ defaults = {
     "weight_method": "dataset",
     "checkpoint_every": 0,
     "eval_every": 2,
-    "best_state_metric": "balanced_accuracy",
-    "best_state_metric_threshold": 0.6,
+    "best_state_metric": "auroc",
+    "best_state_metric_threshold": 0.7,
     "best_state_metric_dataset": "validation", 
     "best_state_metric_goal": "max" 
 }
@@ -157,27 +177,27 @@ train_datafiles = [_.strip() for _ in open(ARGS.train_file).readlines()]
 valid_datafiles = [_.strip() for _ in open(ARGS.valid_file).readlines()]
 
 remove_mask = (C["balance"] == 'all')
-if "kwargs2" in C["model"]["kwargs"] and C["model"]["kwargs"]["kwargs2"]["pool_args"]["name"] == "MeshPool":
-    transform = Compose([GeometricEdgeFeatures(), ScaleEdgeFeatures(method=C["model"]["kwargs"].get("scale_edge_features", None))])
-    print("generating mesh pool features")
-elif "pool_args" in C["model"]["kwargs"] and C["model"]["kwargs"]["pool_args"]["name"] == "MeshPool":
-    transform = Compose([GeometricEdgeFeatures(), ScaleEdgeFeatures(method=C["model"]["kwargs"].get("scale_edge_features", None))])
-    print("generating mesh pool features")
+if C["model"]["name"] == "MultiBranchNet":
+    trans_args = C["model"]["kwargs"]["kwargs2"].get("transform_args", [])
 else:
-    transform = Compose([FaceToEdge(remove_faces=False), GenerateMeshNormals(), PointPairFeatures(), ScaleEdgeFeatures(method=C["model"]["kwargs"].get("scale_edge_features", None))])
+    trans_args = C["model"]["kwargs"].get("transform_args", [])
+transform, edge_dim = getDataTransforms(trans_args)
+feature_mask = C.get("feature_mask", None)
 
 train_dataset, transforms, train_info = loadDataset(train_datafiles, C["nc"], C["labels_key"], C["data_dir"],
         cache_dataset=C.get("cache_dataset", False),
         balance=C["balance"],
         remove_mask=remove_mask,
         scale=True,
-        pre_transform=transform
+        pre_transform=transform,
+        feature_mask=feature_mask
     )
 valid_dataset, _, valid_info = loadDataset(valid_datafiles, C["nc"], C["labels_key"], C["data_dir"],
         cache_dataset=C.get("cache_dataset", False),
         balance='unmasked',
         remove_mask=False,
         scale=True,
+        feature_mask=feature_mask,
         **transforms
     )
 
@@ -194,12 +214,15 @@ else:
 # Create the model we'll be training.
 nF = train_info['num_features']
 if C["model"]["name"] == "NetConvPool":
+    C["model"]["kwargs"]["edge_dim"] = edge_dim
     model = NetConvPool(nF, C['nc'], **C["model"]["kwargs"])
 elif C["model"]["name"] == "PointNetPP":
     model = PointNetPP(nF, C['nc'], **C["model"]["kwargs"])
 elif C["model"]["name"] == "MultiBranchNet":
+    C["model"]["kwargs"]["kwargs2"]["edge_dim"] = edge_dim
     model = MultiBranchNet(nF, C['nc'], **C["model"]["kwargs"])
-
+elif C["model"]["name"] == "FFNet":
+    model = FFNet(nF, C['nc'])
 
 # debugging: log model parameters
 logging.debug("Model Summary:")
@@ -281,10 +304,13 @@ trainer.train(C["epochs"], DL_tr, DL_vl,
 # Write final training predictions to file
 if C["write"]:
     if trainer.best_state is not None:
+        # load the best model
         model.load_state_dict(trainer.best_state)
         logging.info("Loaded best state for model evaluation")
-    train_out = evaluator.eval(DL_tr, use_mask=False)
+    train_out = evaluator.eval(DL_tr, use_masks=True)
+    valid_out = evaluator.eval(DL_vl, use_masks=True)
     np.savez_compressed(ospj(run_path, "training_set_predictions.npz"), Y=train_out['y'], P=train_out['output'])
+    np.savez_compressed(ospj(run_path, "validation_set_predictions.npz"), Y=valid_out['y'], P=valid_out['output'])
 
 ####################################################################################################
 

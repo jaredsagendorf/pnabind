@@ -4,7 +4,8 @@ import geobind.utils
 import geobind.nn
 
 from .map_structure_features_to_mesh import mapStructureFeaturesToMesh
-from .assign_vertex_labels_to_mesh import assignMeshLabelsFromStructure, AtomToClassMapper
+from .assign_vertex_labels_to_mesh import assignMeshLabelsFromStructure, AtomToClassMapper, assignMeshLabelsFromList
+from .vertex_labels_to_residue_labels import vertexLabelsToResidueLabels
 
 __version__ = '0.1.0'
 __all__ = [
@@ -12,5 +13,7 @@ __all__ = [
     "geobind",
     "mapStructureFeaturesToMesh",
     "assignMeshLabelsFromStructure",
-    "AtomToClassMapper"
+    "assignMeshLabelsFromList",
+    "AtomToClassMapper",
+    "vertexLabelsToResidueLabels"
 ]

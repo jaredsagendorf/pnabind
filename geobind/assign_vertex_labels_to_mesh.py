@@ -9,6 +9,7 @@ from scipy.spatial import cKDTree
 # geobind modules
 from geobind.structure.data import data
 from geobind.mesh import smoothMeshLabels
+from .map_structure_features_to_mesh import mapStructureFeaturesToMesh
 
 class AtomToClassMapper(object):
     def __init__(self, ligand_info, default=0, name="LIGANDS"):
@@ -77,13 +78,24 @@ class AtomToClassMapper(object):
         # no match found, return default class
         return self.default
     
-    def testResidue(self, residue):
+    def testResidue(self, residue, allow_modified=True):
         """Check if residue is recognized or not"""
+        def _test(self, name):
+            found = False
+            for res_item in self.regexes['residue_regexes']:
+                if re.search(res_item['residue_regex'], resn):
+                    found = True
+                    break
+            return found
+        
         resn = residue.get_resname()
-        found = False
-        for res_item in self.regexes['residue_regexes']:
-            if re.search(res_item['residue_regex'], resn):
-                found = True
+        found = _test(self, resn)
+        
+        if (not found) and allow_modified:
+            # check chemical components parent
+            if resn in data.chem_components:
+                parn = data.chem_components[resn]['_chem_comp.mon_nstd_parent_comp_id']
+                found = _test(self, parn)
         
         return found
     
@@ -143,6 +155,8 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
         hydrogens=True,
         check_for_intersection=True,
         smooth=False,
+        smoothing_threshold=50.0,
+        no_smooth=None,
         mask=False,
         mask_cutoff=5.0
     ):
@@ -181,7 +195,12 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
     
     if smooth:
         # smooth labels using a smoothing scheme
-        Y = smoothMeshLabels(mesh.edges, Y, nc, faces=mesh.faces, area_faces=mesh.area_faces, threshold=50.0)
+        Y = smoothMeshLabels(mesh.edges, Y, nc, 
+            faces=mesh.faces,
+            area_faces=mesh.area_faces,
+            threshold=smoothing_threshold,
+            ignore_class=no_smooth
+        )
     
     if mask :
         # mask the boundaries of any binding region
@@ -195,6 +214,37 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
     
     return Y
 
-def assignMeshLabelsFromList(structure, mesh, residue_ids, distance_cutoff=2.5, smooth=False):
+def assignMeshLabelsFromList(model, mesh, residue_ids,
+        cl=1,
+        nc=2,
+        distance_cutoff=2.5,
+        hydrogens=True,
+        smooth=False,
+        smoothing_threshold=50.0,
+        no_smooth=None,
+        **kwargs
+    ):
+    
     # loop over residues
-    pass
+    key = 'bs'+str(cl)
+    for res_id in residue_ids:
+        cid, num, ins = res_id.split('.')
+        rid = (' ', int(num), ins.replace('_', ' '))
+        residue = model[cid][rid]
+        for atom in residue:
+            atom.xtra[key] = cl
+    
+    # map to vertices
+    Y = mapStructureFeaturesToMesh(mesh, model, [key], hydrogens=hydrogens, **kwargs)
+    Y = np.round(Y.reshape(-1)).astype(int)
+    
+    if smooth:
+        # smooth labels using a smoothing scheme
+        Y = smoothMeshLabels(mesh.edges, Y, nc, 
+            faces=mesh.faces,
+            area_faces=mesh.area_faces,
+            threshold=smoothing_threshold,
+            ignore_class=no_smooth
+        )
+    
+    return Y

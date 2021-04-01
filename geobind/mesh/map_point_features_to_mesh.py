@@ -9,17 +9,17 @@ def wfn(dist, cutoff, offset=0, weight_method='inverse_distance', minw=0.5, maxw
         raise ValueError("minw must be < maxw!")
     
     # decide how we weight by distance
-    if(weight_method == 'inverse_distance'):
-        b = minw/(maxw - minw)
-        a = maxw*b
-        u = (dist-offset)/(cutoff-offset)
+    if weight_method == 'inverse_distance':
+        b = maxw/(minw - maxw)
+        a = minw*b
+        u = (cutoff - dist + offset)/cutoff
         return np.clip(a/(u + b), minw, maxw)
-    elif(weight_method == 'linear'):
-        b = maxw
-        a = -(maxw - minw)
-        u = (dist-offset)/(cutoff-offset)
+    elif weight_method == 'linear':
+        b = minw
+        a = (maxw - minw)
+        u = (cutoff - dist + offset)/cutoff
         return np.clip(a*u + b, minw, maxw)
-    elif(weight_method == 'binary'):
+    elif weight_method == 'binary':
         return np.ones(d.size)
     else:
         raise ValueError("Unknown value of argument `weight_method`: {}".format(weight_method))
@@ -29,7 +29,7 @@ def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=N
     
     X = np.zeros((mesh.num_vertices, features.shape[1])) # store the mapped features
     W = np.zeros(mesh.num_vertices) # weights determined by distance from points to vertices
-    if(offset == None):
+    if offset == None:
         offset = np.zeros(len(points))
     assert len(points) == len(features) and len(points) == len(offset)
     
@@ -42,16 +42,17 @@ def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=N
         o = offset[i]
         
         # decide how to map point features to vertices
-        if(map_to == 'neighborhood'):
+        if map_to == 'neighborhood':
             # map features to all vertices within a neighborhood, weighted by distance
-            v, d = mesh.verticesInBall(p, distance_cutoff)
-        elif(map_to == 'nearest'):
+            t = distance_cutoff + o
+            v, d = mesh.verticesInBall(p, t)
+        elif map_to == 'nearest':
             # get the neartest vertex
             v, d = mesh.nearestVertex(p)
         else:
             raise ValueError("Unknown value of argument `map_to`: {}".format(map_to))
     
-        if(len(v) > 0):
+        if len(v) > 0:
             w = wfn(d, distance_cutoff, o, weight_method, **kwargs)
             X[v] += np.outer(w, f)
             W[v] += w
