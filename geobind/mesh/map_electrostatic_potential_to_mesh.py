@@ -4,8 +4,9 @@ import numpy as np
 # geobind modules
 from geobind.utils import generateUniformSpherePoints
 from geobind.utils import clipOutliers
+from .laplacian_smoothing import laplacianSmoothing
 
-def mapElectrostaticPotentialToMesh(mesh, phi, acc, sphere_average=True, npts=50, sphere_radius=1.0, efield=False, diff_method='symmetric_difference', h=None):
+def mapElectrostaticPotentialToMesh(mesh, phi, acc, sphere_average=True, npts=50, sphere_radius=1.0, efield=False, diff_method='symmetric_difference', h=None, laplace_smooth=False):
     
     feature_names = []
     features = []
@@ -49,23 +50,26 @@ def mapElectrostaticPotentialToMesh(mesh, phi, acc, sphere_average=True, npts=50
         dz = h[2]*np.array([0, 0, 1])
         
         if diff_method == 'symmetric_difference':
-            Ex = (phi(points+dx) - phi(points-dx))/(2*h[0])
-            Ey = (phi(points+dy) - phi(points-dy))/(2*h[1])
-            Ez = (phi(points+dz) - phi(points-dz))/(2*h[2])
+            Ex = (phi(V+dx) - phi(V-dx))/(2*h[0])
+            Ey = (phi(V+dy) - phi(V-dy))/(2*h[1])
+            Ez = (phi(V+dz) - phi(V-dz))/(2*h[2])
         elif diff_method == 'five_point_stencil':
-            Ex = (-phi(points+2*dx) + 8*phi(points+dx) - 8*phi(points-dx) + phi(points-2*dx))/(12*h[0])
-            Ey = (-phi(points+2*dy) + 8*phi(points+dy) - 8*phi(points-dy) + phi(points-2*dy))/(12*h[1])
-            Ez = (-phi(points+2*dz) + 8*phi(points+dz) - 8*phi(points-dz) + phi(points-2*dz))/(12*h[2])
+            Ex = (-phi(V+2*dx) + 8*phi(V+dx) - 8*phi(V-dx) + phi(V-2*dx))/(12*h[0])
+            Ey = (-phi(V+2*dy) + 8*phi(V+dy) - 8*phi(V-dy) + phi(V-2*dy))/(12*h[1])
+            Ez = (-phi(V+2*dz) + 8*phi(V+dz) - 8*phi(V-dz) + phi(V-2*dz))/(12*h[2])
         else:
             raise ValueError("Unknown value of parameter `diff_method`: '{}'".format(diff_method))
         
-        if sphere_average:
-            Ex = (Ex.reshape(nV, -1)*pts_mask).sum(axis=1)/pts_msum
-            Ey = (Ey.reshape(nV, -1)*pts_mask).sum(axis=1)/pts_msum
-            Ez = (Ez.reshape(nV, -1)*pts_mask).sum(axis=1)/pts_msum
+        #if sphere_average:
+        #    Ex = (Ex.reshape(nV, -1)*pts_mask).sum(axis=1)/pts_msum
+        #    Ey = (Ey.reshape(nV, -1)*pts_mask).sum(axis=1)/pts_msum
+        #    Ez = (Ez.reshape(nV, -1)*pts_mask).sum(axis=1)/pts_msum
         
         sig = -N[:,0]*Ex - N[:,1]*Ey - N[:,2]*Ez
-        features.append(clipOutliers(sig))
+        sig = clipOutliers(sig)
+        if laplace_smooth:
+            sig = laplacianSmoothing(mesh, sig, iterations=2)
+        features.append(sig)
         feature_names.append('efield_projection')
     
     return np.array(features).T, feature_names
