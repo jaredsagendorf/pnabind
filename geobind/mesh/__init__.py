@@ -12,6 +12,7 @@ from .get_convex_hull_distance import getConvexHullDistance
 from .get_hks import getHKS
 from .smooth_mesh_labels import smoothMeshLabels
 from .get_class_segmentations import getClassSegmentations
+from .laplacian_smoothing import laplacianSmoothing
 
 __all__ = [
     "Mesh",
@@ -27,5 +28,6 @@ __all__ = [
     "getConvexHullDistance",
     "getHKS",
     "smoothMeshLabels",
-    "getClassSegmentations"
+    "getClassSegmentations",
+    "laplacianSmoothing"
 ]
