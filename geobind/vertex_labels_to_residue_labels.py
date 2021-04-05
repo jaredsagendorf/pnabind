@@ -6,9 +6,9 @@ from geobind.structure import getAtomKDTree
 from geobind.structure.data import data
 from geobind.structure import mapPointFeaturesToStructure
 
-def vertexLabelsToResidueLabels(atoms, mesh, Y, nc=2, kdt=None, id_format='biopython', null_class=0):    
+def vertexLabelsToResidueLabels(atoms, mesh, Y, nc=2, kdt=None, id_format='dnaprodb', null_class=0):    
     if isinstance(atoms, StructureData):
-        atoms = atoms.get_atoms()
+        atoms = [atom for atom in atoms.get_atoms()]
     
     if kdt is None:
         kdt = getAtomKDTree(atoms)
@@ -23,8 +23,8 @@ def vertexLabelsToResidueLabels(atoms, mesh, Y, nc=2, kdt=None, id_format='biopy
         mask = (Y == c)
         mapPointFeaturesToStructure(mesh.vertices, atoms, areas*mask, 'area_{}'.format(c), kdtree=kdt)
     
-    residue_dict = {}
     # aggregate over atom areas
+    residue_dict = {}
     for atom in atoms:
         residue = atom.get_parent()
         residue_id = residue.get_full_id()
