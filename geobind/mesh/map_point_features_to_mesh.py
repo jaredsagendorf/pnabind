@@ -3,9 +3,10 @@ import numpy as np
 
 # geobind modules
 from geobind.utils import clipOutliers
+from .laplacian_smoothing import laplacianSmoothing
 
-def wfn(dist, cutoff, offset=0, weight_method='inverse_distance', minw=0.5, maxw=1.0, ):
-    if(minw >= maxw):
+def wfn(dist, cutoff, offset=0, weight_method='inverse_distance', minw=0.5, maxw=1.0):
+    if minw >= maxw:
         raise ValueError("minw must be < maxw!")
     
     # decide how we weight by distance
@@ -20,12 +21,12 @@ def wfn(dist, cutoff, offset=0, weight_method='inverse_distance', minw=0.5, maxw
         u = (cutoff - dist + offset)/cutoff
         return np.clip(a*u + b, minw, maxw)
     elif weight_method == 'binary':
-        return np.ones(d.size)
+        return np.ones(dist.size)
     else:
         raise ValueError("Unknown value of argument `weight_method`: {}".format(weight_method))
     
 
-def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=None, map_to='neighborhood', weight_method='inverse_distance', clip_values=False, **kwargs):
+def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=None, map_to='neighborhood', weight_method='inverse_distance', clip_values=False, laplace_smooth=False, **kwargs):
     
     X = np.zeros((mesh.num_vertices, features.shape[1])) # store the mapped features
     W = np.zeros(mesh.num_vertices) # weights determined by distance from points to vertices
@@ -63,5 +64,8 @@ def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=N
     
     # scale by weights
     X /= W.reshape(-1, 1)
+    
+    if laplace_smooth:
+        X = laplacianSmoothing(mesh, X)
     
     return X
