@@ -4,10 +4,13 @@ import numpy as np
 # geobind modules
 from geobind.mesh import mapPointFeaturesToMesh
 
-def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None, hydrogens=False, **kwargs):
+def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None, hydrogens=True, impute=True, **kwargs):
     """
         map_to: neighborhood, nearest
     """
+    if isinstance(feature_names, str):
+        feature_names = [feature_names]
+    
     # loop over atoms
     coords = []   # atom coordinates
     radii = []    # atomic radii
@@ -24,6 +27,10 @@ def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None,
             rid = "{}.{}.{}".format(aid[2], aid[3][1], aid[3][2])
             if not (rid in residue_ids):
                 continue
+        
+        if not impute and not all([fn in atom.xtra for fn in feature_names]):
+            # skip if atom missing any features
+            continue
         
         coords.append(atom.coord)
         radii.append(atom.xtra["radius"])
