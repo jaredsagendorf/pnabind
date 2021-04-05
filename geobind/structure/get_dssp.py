@@ -2,7 +2,7 @@ from Bio.PDB.DSSP import DSSP
 
 def getDSSP(model, PDBFileName, dssp_map=None, feature_name='secondary_structure', formatstr="{}({})"):
     
-    if(dssp_map is None):
+    if dssp_map is None:
         # map eight ss types to three
         dssp_map = {
             "H": formatstr.format(feature_name, "H"),
@@ -24,7 +24,8 @@ def getDSSP(model, PDBFileName, dssp_map=None, feature_name='secondary_structure
         for residue in chain:
             rid = residue.get_id()
             dkey = (cid, rid)
-            if(dkey in dssp):
+            
+            if dkey in dssp:
                 ss = dssp_map[dssp[dkey][2]]
             else:
                 ss = dssp_map['-']
