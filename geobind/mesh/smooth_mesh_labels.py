@@ -3,7 +3,13 @@ import trimesh
 
 from .get_class_segmentations import getClassSegmentations
 
-def smoothMeshLabels(edges, labels, num_classes, threshold=16.0, faces=None, area_faces=None, ignore_class=None, **kwargs):
+def smoothMeshLabels(edges, labels, num_classes, 
+            threshold=16.0,
+            faces=None,
+            area_faces=None,
+            ignore_class=None,
+            **kwargs
+    ):
     # get class segmentations
     clusters, cluster_idx, cluster_areas, cluster_labels = getClassSegmentations(edges, labels, faces=faces, area_faces=area_faces, **kwargs)
     num_clusters = len(clusters)
