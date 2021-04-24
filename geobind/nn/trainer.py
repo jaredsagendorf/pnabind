@@ -3,6 +3,7 @@ import logging
 import json
 from os.path import join as ospj
 from collections import OrderedDict
+import copy
 
 # third party modules
 import torch
@@ -164,11 +165,11 @@ class Trainer(object):
                 metrics['train'] = self.evaluator.getMetrics(dataset, eval_mode=True, report_threshold=True, threshold=0.5, metrics_calculation="average_batches")
                 metrics['train']['loss'] = epoch_loss/(n + 1e-5)
                 
-                if(validation_dataset is not None):
+                if validation_dataset is not None:
                     metrics['validation'] = self.evaluator.getMetrics(validation_dataset, eval_mode=True, threshold=0.5, metrics_calculation="average_batches")
                 
                 # report performance
-                if(not self.quiet):
+                if not self.quiet:
                     reportMetrics(metrics,
                         label=('Epoch', epoch),
                         header=first_epoch
@@ -181,13 +182,13 @@ class Trainer(object):
                     if best_state_metric_goal == 'max' and state_metric > best_state_metric_threshold:
                         if state_metric > self.best_state_metric:
                             self.best_state_metric = state_metric
-                            self.best_state = self.model.state_dict()
+                            self.best_state = copy.deepcopy(self.model.state_dict())
                             self.best_epoch = epoch
                             self.metrics_history['best_epoch'] = epoch
                     elif best_state_metric_goal == 'min' and state_metric < best_state_metric_threshold:
                         if state_metric < self.best_state_metric:
                             self.best_state_metric = state_metric
-                            self.best_state = self.model.state_dict()
+                            self.best_state = copy.deepcopy(self.model.state_dict())
                             self.best_epoch = epoch
                             self.metrics_history['best_epoch'] = epoch
                 
@@ -247,12 +248,15 @@ class Trainer(object):
         
         return self.metrics_history[tag][metric][ind]
     
-    def saveState(self, epoch, suffix, metrics=True, optimizer=True):
+    def saveState(self, epoch, suffix, metrics=True, optimizer=True, state=None):
         fname = ospj(self.checkpoint_path, suffix)
         
         # remove 'module' prefix from state_dict entries
         new_state_dict = OrderedDict()
-        for k, v in self.model.state_dict().items():
+        if state is None:
+            state = self.model.state_dict()
+        
+        for k, v in state.items():
             name = k.replace("module.", "") # remove 'module.' prefix
             new_state_dict[name] = v
         
@@ -260,8 +264,10 @@ class Trainer(object):
             'model_state_dict': new_state_dict,
             'epoch': epoch
         }
+        
         if metrics:
             data['history'] = self.metrics_history
+            
         if optimizer:
             data['optimizer_state_dict'] = self.optimizer.state_dict()
         
@@ -275,7 +281,12 @@ class Trainer(object):
         
         # Save best state to file if we kept it
         if self.best_state is not None:
-            fname = self.saveState(self.best_epoch, "{}.{}.tar".format(self.model_name, "best"), metrics=False, optimizer=False)
+            fname = self.saveState(
+                self.best_epoch, "{}.{}.tar".format(self.model_name, "best"),
+                metrics=False,
+                optimizer=False,
+                state=self.best_state
+            )
             logging.info("Writing best state to file {} (epoch: {})".format(fname, self.best_epoch))
             logging.info("Best tracked metric achieved: {:.3f}".format(self.best_state_metric))
         

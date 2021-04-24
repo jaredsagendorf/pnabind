@@ -52,6 +52,7 @@ import logging
 import shutil
 from datetime import datetime
 from os.path import join as ospj
+import pickle
 
 # Third party modules
 import numpy as np
@@ -87,6 +88,22 @@ def getDataTransforms(args):
         transforms.append(t)
     
     return Compose(transforms), edge_dim
+
+def addWeightDecay(model, weight_decay=1e-5, skip_list=()):
+    """This function excludes certain parameters (e.g. batch norm, and linear biases)
+    from being subject to weight decay"""
+    decay = []
+    no_decay = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if len(param.shape) == 1 or name.endswith(".bias") or name in skip_list:
+            no_decay.append(param)
+        else:
+            decay.append(param)
+    return [
+        {'params': no_decay, 'weight_decay': 0.0},
+        {'params': decay, 'weight_decay': weight_decay}]
 
 ####################################################################################################
 # Load the config file
@@ -177,10 +194,8 @@ train_datafiles = [_.strip() for _ in open(ARGS.train_file).readlines()]
 valid_datafiles = [_.strip() for _ in open(ARGS.valid_file).readlines()]
 
 remove_mask = (C["balance"] == 'all')
-if C["model"]["name"] == "MultiBranchNet":
-    trans_args = C["model"]["kwargs"]["kwargs2"].get("transform_args", [])
-else:
-    trans_args = C["model"]["kwargs"].get("transform_args", [])
+
+trans_args = C["model"].get("transform_args", [])
 transform, edge_dim = getDataTransforms(trans_args)
 feature_mask = C.get("feature_mask", None)
 
@@ -201,6 +216,9 @@ valid_dataset, _, valid_info = loadDataset(valid_datafiles, C["nc"], C["labels_k
         **transforms
     )
 
+# save scaler to file
+pickle.dump(transforms["scaler"], open(ospj(run_path, 'scaler.pkl'), "wb"))
+
 if torch.cuda.device_count() <= 1 or C["single_gpu"] or C["debug"]:
     # prepate data for single GPU or CPU 
     DL_tr = DataLoader(train_dataset, batch_size=C["batch_size"], shuffle=C["shuffle"], pin_memory=True)
@@ -219,7 +237,7 @@ if C["model"]["name"] == "NetConvPool":
 elif C["model"]["name"] == "PointNetPP":
     model = PointNetPP(nF, C['nc'], **C["model"]["kwargs"])
 elif C["model"]["name"] == "MultiBranchNet":
-    C["model"]["kwargs"]["kwargs2"]["edge_dim"] = edge_dim
+    #C["model"]["kwargs"]["kwargs2"]["edge_dim"] = edge_dim
     model = MultiBranchNet(nF, C['nc'], **C["model"]["kwargs"])
 elif C["model"]["name"] == "FFNet":
     model = FFNet(nF, C['nc'])
@@ -243,10 +261,12 @@ model = model.to(device)
 ### Set up optimizer, scheduler and loss ###########################################################
 
 # optimizer
+model_parameters = addWeightDecay(model, C["optimizer"]["kwargs"]["weight_decay"])
+
 if(C["optimizer"]["name"] == "adam"):
-    optimizer = torch.optim.Adam(model.parameters(), **C["optimizer"]["kwargs"])
+    optimizer = torch.optim.Adam(model_parameters, **C["optimizer"]["kwargs"])
 elif(C["optimizer"]["name"] == "sgd"):
-    optimizer = torch.optim.SGD(model.parameters(), **C["optimizer"]["kwargs"])
+    optimizer = torch.optim.SGD(model_parameters, **C["optimizer"]["kwargs"])
 logging.info("configured optimizer: %s", C["optimizer"]["name"])
 
 # scheduler
@@ -307,8 +327,8 @@ if C["write"]:
         # load the best model
         model.load_state_dict(trainer.best_state)
         logging.info("Loaded best state for model evaluation")
-    train_out = evaluator.eval(DL_tr, use_masks=True)
-    valid_out = evaluator.eval(DL_vl, use_masks=True)
+    train_out = evaluator.eval(DL_tr, use_masks=True, eval_mode=True)
+    valid_out = evaluator.eval(DL_vl, use_masks=True, eval_mode=True)
     np.savez_compressed(ospj(run_path, "training_set_predictions.npz"), Y=train_out['y'], P=train_out['output'])
     np.savez_compressed(ospj(run_path, "validation_set_predictions.npz"), Y=valid_out['y'], P=valid_out['output'])
 
@@ -329,7 +349,7 @@ if C["write"] and C["write_test_predictions"]:
     else:
         threshold = 0.5
     
-    val_out = evaluator.eval(DL_vl, use_masks=False, batchwise=True, return_masks=True, return_predicted=True, return_batches=True, xtras=['pos', 'face'], threshold=threshold)
+    val_out = evaluator.eval(DL_vl, use_masks=False, batchwise=True, return_masks=True, return_predicted=True, return_batches=True, xtras=['pos', 'face'], threshold=threshold, eval_mode=True)
     for i in range(val_out['num_batches']):
         name = valid_datafiles[i].replace("_protein_data.npz", "")
         
