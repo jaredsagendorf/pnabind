@@ -29,7 +29,7 @@ def smoothResiduePredictions(structure, residue_dict, nc=2, edge_dist_threshold=
     pass # incomplete function
 
 def vertexLabelsToResidueLabels(structure, mesh, Y, nc=2, kdt=None, id_format='dnaprodb', null_class=0, return_kdt=False, thresholds=None):    
-    if isinstance(atoms, list):
+    if isinstance(structure, list):
         atoms = structure # we were given a list of atoms
     else:
         atoms = [atom for atom in structure.get_atoms()]
