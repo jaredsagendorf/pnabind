@@ -14,8 +14,9 @@ from geobind.nn.utils import MLP
 class SAModule(torch.nn.Module):
     def __init__(self, nIn, nOut, conv_args, ratio, radius,
             max_neighbors=32,
-            norm=None,
-            norm_kwargs={},
+            batch_norm=False,
+            graph_norm=None,
+            graph_norm_kwargs={},
             e_dropout=0.0,
             v_dropout=0.0
         ):
@@ -28,38 +29,33 @@ class SAModule(torch.nn.Module):
         self.v_dropout = v_dropout
         
         # set up normalization
-        if norm == 'PairNorm':
-            self.norm = PairNorm(**norm_kwargs)
-            bn = True
-        elif norm == 'InstanceNorm':
-            self.norm = InstanceNorm(nOut, **norm_kwargs)
-            bn = True
-        elif norm == 'BatchNorm':
-            self.norm = BatchNorm(nOut, **norm_kwargs)
-            bn = True
-        elif norm == 'MLP_only':
-            self.norm = None
-            bn = True
+        if graph_norm == 'PairNorm':
+            self.norm = PairNorm(**graph_norm_kwargs)
+        elif graph_norm == 'InstanceNorm':
+            self.norm = InstanceNorm(nOut, **graph_norm_kwargs)
+        elif graph_norm == 'BatchNorm':
+            self.norm = BatchNorm(nOut, **graph_norm_kwargs)
         else:
-            bn = False
+            self.norm = None
         
         # set up convolution
         self.conv_name = conv_args['name']
         if conv_args['name'] == 'PointConv':
             dim = nIn + 3
-            nn = MLP([dim, dim, nOut], batch_norm=bn)
+            nn = MLP([dim, dim, nOut], batch_norm=batch_norm)
             self.conv = PointConv(nn)
         elif conv_args['name'] == 'GraphConv':
             self.conv =  GraphConv(nIn, nOut, aggr=conv_args['aggr'])
         elif conv_args['name'] == 'PPFConv':
             dim = nIn + 4
-            nn = MLP([dim, dim, nOut], batch_norm=bn)
-            self.conv = PPFConv(nn)
-            self.conv.aggr = conv_args['aggr']
+            nn1 = MLP([dim, dim, dim], batch_norm=batch_norm)
+            nn2 = MLP([dim, nOut], batch_norm=batch_norm)
+            self.conv = PPFConv(nn1, nn2, add_self_loops=False)
+            self.conv.aggr = conv_args.get('aggr', 'max')
         
     def forward(self, x, pos, batch, norm=None):
         # pool points based on FPS algorithm, returning Npt*ratio centroids
-        idx = fps(pos, batch, ratio=self.ratio) 
+        idx = fps(pos, batch, ratio=self.ratio, random_start=self.training)
         
         # finds points within radius `self.r` of the centroids, up to `self.K` pts per centroid
         row, col = radius(pos, pos[idx], self.r, batch, batch[idx],
@@ -108,12 +104,12 @@ class SAModule(torch.nn.Module):
         return x, pos, batch, idx
 
 class FPModule(torch.nn.Module):
-    def __init__(self, nIn, nSkip, nOut, k=3, norm=True):
+    def __init__(self, nIn, nSkip, nOut, k=3, batch_norm=True, bn_kwargs={}):
         super(FPModule, self).__init__()
         """This module acts as an unpooling/interpolation layer. Taken from pytorch-geometric examples."""
         self.k = k
         dim = nIn + nSkip
-        self.nn = MLP([dim, dim, nOut], batch_norm=norm)
+        self.nn = MLP([dim, dim, nOut], batch_norm=batch_norm, bn_kwargs=bn_kwargs)
     
     def forward(self, x, pos, batch, x_skip, pos_skip, batch_skip):
         x = knn_interpolate(x, pos, pos_skip, batch, batch_skip, k=self.k)
@@ -126,22 +122,24 @@ class FPModule(torch.nn.Module):
 class PointNetPP(torch.nn.Module):
     def __init__(self, nIn, nOut=None, 
             conv_args=None,
-            crf_args={},
+            crf_kwargs={},
             depth=3,
             nhidden=16,
             ratios=None,
             radii=None,
-            max_neighbors=64,
+            max_neighbors=32,
             knn_num=3,
             name='pointnet_pp',
             use_lin=True,
             use_crf=False,
-            norm='MLP_only',
-            norm_kwargs={},
+            batch_norm=True,
+            graph_norm=False,
+            graph_norm_kwargs={},
             v_dropout=0.0,
             e_dropout=0.0
         ):
         super(PointNetPP, self).__init__()
+        
         ### Set up ###
         self.depth = depth
         self.name = name
@@ -159,42 +157,52 @@ class PointNetPP(torch.nn.Module):
             radii = [2.0]*depth
         assert len(radii) == depth
         
-        # activation function
-        #self.act = ReLU()
-        #if(act == 'relu'):
-            #self.act = F.relu
-        #elif(act == 'elu'):
-            #self.act = F.elu
-        #elif(act == 'selu'):
-            #self.act = F.selu
-        
         ### Model Layers ###
-        # dimentionality reduction
-        #self.lin_in = nn.Linear(nIn, nhidden)
-        self.lin_in = MLP([nIn, nIn, nhidden])
+        # linear input
+        self.lin_in = MLP([nIn, nhidden, nhidden])
         
         # pooling/unpooling layers
-        bn_norm = (norm is not None)
         self.SA_modules = torch.nn.ModuleList()
         self.FP_modules = torch.nn.ModuleList()
         for i in range(depth):
-            self.SA_modules.append(SAModule(nhidden, nhidden, conv_args, ratios[i], radii[i], 
-                max_neighbors=max_neighbors,
-                e_dropout=e_dropout,
-                v_dropout=v_dropout,
-                norm=norm,
-                norm_kwargs=norm_kwargs
-            ))
-            self.FP_modules.append(FPModule(nhidden, nhidden, nhidden, k=knn_num, norm=bn_norm))
+            self.SA_modules.append(
+                SAModule(
+                    nhidden,
+                    nhidden,
+                    conv_args,
+                    ratios[i],
+                    radii[i], 
+                    max_neighbors=max_neighbors,
+                    e_dropout=e_dropout,
+                    v_dropout=v_dropout,
+                    batch_norm=batch_norm,
+                    graph_norm=graph_norm,
+                    graph_norm_kwargs=graph_norm_kwargs
+                )
+            )
+            self.FP_modules.append(
+                FPModule(
+                    nhidden,
+                    nhidden,
+                    nhidden,
+                    k=knn_num,
+                    batch_norm=batch_norm
+                )
+            )
         self.nout = nhidden
         
         # linear layers
         if use_lin:
-            self.lin_out = MLP([nhidden, nhidden, nOut], batch_norm=False, act=['relu', None])
+            self.lin_out = MLP(
+                    [nhidden, nhidden, nOut],
+                    batch_norm=[batch_norm, False],
+                    act=['relu', None],
+                    dropout=[dropout, 0.0]
+            )
             self.nout = nOut
         
         if use_crf:
-            self.crf1 = ContinuousCRF(**crf_args)
+            self.crf1 = ContinuousCRF(**crf_kwargs)
     
     def forward(self, data):
         # lin1
@@ -223,9 +231,6 @@ class PointNetPP(torch.nn.Module):
         # lin 2-4
         if self.use_lin:
             x = F.dropout(x, p=self.v_dropout, training=self.training)
-            #x = self.act(self.lin2(x))
-            #x = self.act(self.lin3(x))
-            #x = self.lin4(x)
             x = self.lin_out(x)
         
         # crf layer
