@@ -21,7 +21,7 @@ def laplacianSmoothing(mesh, X, add_self_loops=True, iterations=1):
         Xs = np.zeros_like(X)
         
         # perform scatter ops
-        np.add.at(Xs, Es[:, 1], X[Es[:,0]])
+        np.add.at(Xs, Es[:, 1], X[Es[:, 0]])
         
         # divide by degree
         X = Xs / d
