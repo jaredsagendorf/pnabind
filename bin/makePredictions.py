@@ -16,6 +16,7 @@ from geobind.structure import getAtomKDTree, StructureData, getAtomSESA, cleanPr
 from geobind.structure.data import data as D
 
 arg_parser = argparse.ArgumentParser()
+# input options
 arg_parser.add_argument("path",
                 help="directory containing .npz files which store probabilities")
 arg_parser.add_argument("--data_files",
@@ -24,10 +25,18 @@ arg_parser.add_argument("--model_index", type=int,
                 help="use probabilities from a specific model. If not provided will average all probabilities")
 arg_parser.add_argument("--pdb_dir", default=".",
                 help="directory containing PDB files")
+arg_parser.add_argument("--training_data",
+                help="use training data to optimize threshold")
+
+# label smoothing options
 arg_parser.add_argument("--min_area", type=float,
                 help="minimum cluster area")
-arg_parser.add_argument("--merge_dist", type=float,
+arg_parser.add_argument("--merge_dist", type=float, default=8.0,
                 help="label cluster merge distance")
+arg_parser.add_argument("--no_check_intersection", action="store_true", default=False,
+                help="don't check for intersection when merging label clusters")
+
+# metrics calculation options
 arg_parser.add_argument("-t", "--threshold", type=float, default=0.5,
                 help="probability threshold for evaluating metrics")
 arg_parser.add_argument("--metric_opt", default="ba",
@@ -36,18 +45,20 @@ arg_parser.add_argument("--metric_opt", default="ba",
 arg_parser.add_argument("--metrics_eval", nargs="+", default=["miou", "ba", "auc"],
                 choices=["auc", "ba", "miou", "smoothness", "f1", "f2", "standard", "sp", "fpr"],
                 help="metrics to evaluate")
-arg_parser.add_argument("--no_print_individual", action="store_true",
-                help="don't print metrics for individual structures")
-arg_parser.add_argument("--training_data",
-                help="use training data to optimize threshold")
+
+# residue prediction options
 arg_parser.add_argument("--no_residue_predictions", action="store_true", 
                 help="skip residue predictions")
+arg_parser.add_argument("--sesa_threshold", type=float,
+                help="area threshold for SESA cutoffs, should be between 0 and 1")
+                
+# output options
+arg_parser.add_argument("--no_print_individual", action="store_true",
+                help="don't print metrics for individual structures")
 arg_parser.add_argument("--write_predictions", action="store_true", 
                 help="write out predictions to file")
 arg_parser.add_argument("--csv_file", 
                 help="write output to CSV file")
-arg_parser.add_argument("--sesa_threshold", type=float,
-                help="area threshold for SESA cutoffs")
 arg_parser.add_argument("--pymol", action="store_true",
                 help="write out a pymol script for residue labels")
 ARGS = arg_parser.parse_args()
@@ -235,7 +246,6 @@ def getThreshold():
         Ptr = Ptr[mask]
     
     t, m = chooseBinaryThreshold(Ytr, Ptr[:,1], metric_fns[ARGS.metric_opt])
-    #print("Optimized threshold ({}): {:.2f} score: {:.3f}".format(ARGS.metric_opt, t, m))
     
     return t
 
@@ -304,6 +314,15 @@ if ARGS.no_print_individual:
 else:
     lw = max([len(_)-len("./_predict.npz") for _ in file_names] + [len("Protein Identifier")])
 
+
+# get SESA threshold
+if ARGS.sesa_threshold is not None:
+    sesa_thresholds={}
+    for res_name in D.standard_sesa_H:
+        sesa_thresholds[res_name] = ARGS.sesa_threshold*D.standard_sesa_H[res_name]["total"]
+else:
+    sesa_thresholds=None
+
 metrics_all = []
 header = True
 for line in file_names:
@@ -332,17 +351,20 @@ for line in file_names:
                 merge_distance=ARGS.merge_dist,
                 vertices=V,
                 faces=F,
-                area_faces=mesh.area_faces
+                area_faces=mesh.area_faces,
+                check_mesh_intersection=(not ARGS.no_check_intersection)
         )
     
     if not ARGS.no_residue_predictions:
         ## Get stucture based pooling
         
         # apply same processing as on training data
-        fname = line.replace("_ensemble.npz", "")
+        fname = os.path.basename(line)
+        fname = fname.replace("_ensemble.npz", "")
         fname = fname.replace("./", "")
         pname = fname + '.pdb'
         processed = os.path.join('pdb_files', pname)
+        
         if os.path.exists(processed):
             protein = StructureData(pname, path="pdb_files")
         else:
@@ -355,12 +377,12 @@ for line in file_names:
         
         Ynm = Y.copy()
         Ynm[~mask] = 0 # remove mask
-        map_gt, kdt = vertexLabelsToResidueLabels(protein, mesh, Ynm, nc=2, return_kdt=True, thresholds=ARGS.sesa_threshold)
+        map_gt, kdt = vertexLabelsToResidueLabels(protein, mesh, Ynm, nc=2, return_kdt=True, thresholds=sesa_thresholds)
         
         if ARGS.min_area:
-            map_pr = vertexLabelsToResidueLabels(protein, mesh, Y_smooth, nc=2, kdt=kdt, thresholds=ARGS.sesa_threshold)
+            map_pr = vertexLabelsToResidueLabels(protein, mesh, Y_smooth, nc=2, kdt=kdt, thresholds=sesa_thresholds)
         else:
-            map_pr = vertexLabelsToResidueLabels(protein, mesh, Y_ensemb, nc=2, kdt=kdt)
+            map_pr = vertexLabelsToResidueLabels(protein, mesh, Y_ensemb, nc=2, kdt=kdt, thresholds=sesa_thresholds)
         Y_struct_gt = []
         Y_struct_pr = []
         for key in map_gt:
