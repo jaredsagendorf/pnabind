@@ -14,6 +14,7 @@ from .structure import StructureData
 from .map_point_features_to_structure import mapVertexProbabilitiesToStructure
 from .map_point_features_to_structure import mapPointFeaturesToStructure
 from .pairs_within_distance import pairsWithinDistance
+from .residue_distances import getResidueDistance
 
 __all__ = [
     "cleanProtein",
@@ -32,5 +33,6 @@ __all__ = [
     "StructureData",
     "mapVertexProbabilitiesToStructure",
     "mapPointFeaturesToStructure",
-    "pairsWithinDistance"
+    "pairsWithinDistance",
+    "getResidueDistance"
 ]

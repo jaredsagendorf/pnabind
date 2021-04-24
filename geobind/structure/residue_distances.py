@@ -33,7 +33,7 @@ def getResidueDistance(res1, res2, atm1=None, atm2=None, hydrogens=True):
     }
     
     if atm1 and atm2:
-       distance_measures["{}-{}".format(atm1, atm2)] = res1[atm1] - res2[atm2] 
+       distance_measures["{}-{}".format(atm1, atm2)] = res1[atm1] - res2[atm2]
     
     return distance_measures
 
