@@ -23,6 +23,8 @@ arg_parser.add_argument("-F", "--no_features", dest="no_features", action='store
                 help="do not generate any mesh features for each interface")
 arg_parser.add_argument("-A", "--no_adjacency", dest="no_adjacency", action='store_true', default=False,
                 help="do not write mesh adjacency matrix to file")
+arg_parser.add_argument("-P", "--no_pockets", dest="no_pockets", action='store_true', default=False,
+                help="do not use any pocket features")
 arg_parser.add_argument("-d", "--debug", action='store_true', default=False,
                 help="write additional information")
 arg_parser.add_argument("-l", "--ligand_list", dest="ligand_list", nargs="+",
@@ -31,6 +33,8 @@ arg_parser.add_argument("-y", "--label_set_name",
                 help="a name for the label set")
 arg_parser.add_argument("--label_method", choices=["structure_structure_distance", "structure_vertex_distance"], default="structure_vertex_distance",
                 help="a name for the label set")
+arg_parser.add_argument("--mesh_only", action='store_true',
+                help="only compute mesh for each structure")
 ARGS = arg_parser.parse_args()
 
 # builtin modules
@@ -47,7 +51,7 @@ from scipy.sparse import save_npz
 
 # geobind modules
 import geobind
-from geobind import mapStructureFeaturesToMesh, AtomToClassMapper
+from geobind import mapStructureFeaturesToMesh, AtomToClassMapper, vertexLabelsToResidueLabels
 from geobind.structure.data import data as D
 from geobind.structure import StructureData, pairsWithinDistance
 from geobind.structure import ResidueMutator
@@ -69,7 +73,7 @@ def getEntities(structure, regexes, atom_mapper=None, mi=0):
             else:
                 lig.append(residue.get_full_id())
     
-    return structure.slice(structure, pro, 'protein'), structure.slice(structure, lig, 'ligand')
+    return structure.slice(structure, pro, '{}_protein'.format(structure.name)), structure.slice(structure, lig, '{}_ligand'.format(structure.name))
 
 def accumulateSESA(res_dict, atoms, key):
     if isinstance(atoms, StructureData):
@@ -134,13 +138,16 @@ def main():
     
     if ARGS.residue_ids:
         RIFH = open(ARGS.residue_ids)
-        
+    else:
+        RIFH = None
+    
     # main loop
     for fileName in open(listFile):
         fileName = fileName.strip()
-        if(fileName[0] == '#'):
+        if fileName[0] == '#':
             # skip commented lines
-            RIFH.readline()
+            if RIFH:
+                RIFH.readline()
             continue
         
         ### LOAD STRUCTURE #########################################################################
@@ -197,7 +204,7 @@ def main():
         arrays['name'] = protein_id
         if mesh.vertex_normals is not None:
             arrays['N'] = mesh.vertex_normals
-            
+        
         ### FEATURES ###############################################################################
         update_features = (not ARGS.no_features) and (ARGS.refresh or ('X' not in arrays))
         if update_features:
@@ -208,6 +215,7 @@ def main():
             ### Geometry Features ##################################################################
             # Compute vertex-level features based only on mesh geometry. Features are stored in the
             # `mesh.vertex_attributes` property of the mesh object.
+            #geobind.mesh.getPatchZernikeMoments(mesh, radius=3.0, order=5, smooth=False)
             geobind.mesh.getMeshCurvature(mesh)
             geobind.mesh.getConvexHullDistance(mesh)
             geobind.mesh.getHKS(mesh)
@@ -220,7 +228,7 @@ def main():
             # Compute atom-level features and store them in atom.xtra of chain. Atom-level features 
             # are computed based only on the protein structure and are independent of the mesh.
 
-            if(C["AREA_MEASURE"] == "sesa"):
+            if C["AREA_MEASURE"] == "sesa":
                 geobind.structure.getAtomSESA(protein, protein_id)
             else:
                 geobind.structure.getAtomSASA(protein, classifier=classifier)
@@ -232,18 +240,24 @@ def main():
             features_a += geobind.structure.getCV(protein, 100.0, feature_name="cv_coarse", hydrogens=False)
             features_a += geobind.structure.getDSSP(protein, pdb)
             features_a += geobind.structure.getAchtleyFactors(protein)
-            features_a += geobind.structure.getHBondAtoms(protein)
             FEATURE_NAMES += features_a
             
             # Map atom-level features to the mesh, weighted by inverse distance from the atom to 
             # nearby mesh vertices
-            Xa = mapStructureFeaturesToMesh(mesh, protein, features_a, hydrogens=C["HYDROGENS"])
+            Xa = mapStructureFeaturesToMesh(mesh, protein, features_a, distance_cutoff=2.5, weight_method="linear", hydrogens=C["HYDROGENS"])
             FEATURES.append(Xa)
             
+            # Map hydrogen bond potenial with binary weights
+            features_h = geobind.structure.getHBondAtoms(protein)
+            FEATURE_NAMES += features_h
+            FEATURES.append( mapStructureFeaturesToMesh(mesh, protein, features_h[0], distance_cutoff=0.5, hydrogens=C["HYDROGENS"], weight_method="linear", impute=False, laplace_smooth=True) )
+            FEATURES.append( mapStructureFeaturesToMesh(mesh, protein, features_h[1], distance_cutoff=0.5, hydrogens=C["HYDROGENS"], weight_method="linear", impute=False, laplace_smooth=True) )
+            
             # Compute pocket features
-            Xp, features_p = geobind.mesh.getPockets(protein, mesh, radius_big=3.0)
-            FEATURE_NAMES += features_p
-            FEATURES.append(Xp)
+            if not ARGS.no_pockets:
+                Xp, features_p = geobind.mesh.getPockets(protein, mesh, radius_big=3.0)
+                FEATURE_NAMES += features_p
+                FEATURES.append(Xp)
             
             # Compute Electrostatic features
             if not ARGS.no_electrostatics:
@@ -262,7 +276,7 @@ def main():
                         # try with coarser values
                         phi, acc = geobind.structure.runAPBS(protein, protein_id, pqr=pqr, basedir=C["ELECTROSTATICS_PATH"], space=0.5, cfac=1.5)
                 
-                Xe, features_e = geobind.mesh.mapElectrostaticPotentialToMesh(mesh, phi, acc, efield=True, diff_method='five_point_stencil')
+                Xe, features_e = geobind.mesh.mapElectrostaticPotentialToMesh(mesh, phi, acc, efield=True, diff_method='five_point_stencil', sphere_average=True, laplace_smooth=True)
                 FEATURE_NAMES += features_e
                 FEATURES.append(Xe)
             
@@ -286,7 +300,9 @@ def main():
                     distance_cutoff=1.5,
                     smooth=C["SMOOTH_LABELS"],
                     smoothing_threshold=C.get("SMOOTHING_THRESHOLD", 50.0),
-                    no_smooth=C.get("NO_SMOOTH_CLASSES", [1])
+                    no_smooth=C.get("NO_SMOOTH_CLASSES", [1]),
+                    mask=C["MASK_LABELS"],
+                    mask_cutoff=C.get("MASK_DISTANCE_CUTOFF", 3.0)
                 )
             else:
                 Y = geobind.assignMeshLabelsFromStructure(lig, mesh, atom_mapper,
@@ -295,37 +311,9 @@ def main():
                     no_smooth=C.get("NO_SMOOTH_CLASSES", [1]),
                     mask=C["MASK_LABELS"],
                     distance_cutoff=C["MESH_DISTANCE_CUTOFF"],
-                    mask_cutoff=C.get("MASK_DISTANCE_CUTOFF", 0)
+                    mask_cutoff=C.get("MASK_DISTANCE_CUTOFF", 3.0)
                 )
-            
-            # elif ARGS.label_method == "buried_sesa":
-                # getAtomChargeRadius(lig, source="EDTSurf")
-                # com = lig.atom_list + protein.atom_list
-                
-                # # compute SESA values
-                # getAtomSESA(protein, hydrogens=C["HYDROGENS"], key="fsesa")
-                # getAtomSESA(com, hydrogens=C["HYDROGENS"], key="csesa")
-                
-                # # get residue buried SESA
-                # residue_sesa = {}
-                # accumulateSESA(residue_sesa, protein, "fsesa")
-                # accumulateSESA(residue_sesa, com, "csesa")
-                
-                # res_ids = []
-                # for rid in residue_sesa:
-                    # bsesa = residue_sesa[rid]['fsesa'] - residue_sesa[rid]['csesa']
-                    # resn = residue_sesa[rid]['resn']
-                    # if bsesa >= D.buried_sesa_cutoffs[resn]:
-                        # res_ids.append(rid)
-                
-                # Y = geobind.assignMeshLabelsFromList(protein, mesh, res_ids,
-                    # weight_method='linear',
-                    # distance_cutoff=0.5,
-                    # smooth=C["SMOOTH_LABELS"],
-                    # smoothing_threshold=C.get("SMOOTHING_THRESHOLD", 50.0),
-                    # no_smooth=C.get("NO_SMOOTH_CLASSES", [1])
-                # )
-    
+            res_ids = vertexLabelsToResidueLabels(protein, mesh, Y, nc=2)
         
         ### OUTPUT #############################################################################
         # Write features to disk

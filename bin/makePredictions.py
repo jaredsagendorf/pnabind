@@ -3,7 +3,7 @@ import sys
 import argparse
 import logging
 import numpy as np
-from sklearn.metrics import jaccard_score, balanced_accuracy_score, confusion_matrix, auc, f1_score, fbeta_score
+from sklearn.metrics import jaccard_score, balanced_accuracy_score, confusion_matrix, auc, f1_score, fbeta_score, precision_score
 import trimesh
 from glob import glob
 import math
@@ -12,13 +12,16 @@ from geobind import vertexLabelsToResidueLabels
 from geobind.nn.metrics import chooseBinaryThreshold, reportMetrics, auroc, auprc
 from geobind.mesh import smoothMeshLabels
 from geobind.nn.metrics import meshLabelSmoothness
-from geobind.structure import mapPointFeaturesToStructure #mapVertexProbabilitiesToStructure
 from geobind.structure import getAtomKDTree, StructureData, getAtomSESA, cleanProtein
 from geobind.structure.data import data as D
 
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("path",
-                help="directory containing .npz files")
+                help="directory containing .npz files which store probabilities")
+arg_parser.add_argument("--data_files",
+                help="an explicit list of datafiles to use. If not provided will glob all .npz files")
+arg_parser.add_argument("--model_index", type=int,
+                help="use probabilities from a specific model. If not provided will average all probabilities")
 arg_parser.add_argument("--pdb_dir", default=".",
                 help="directory containing PDB files")
 arg_parser.add_argument("--min_area", type=float,
@@ -28,7 +31,7 @@ arg_parser.add_argument("--merge_dist", type=float,
 arg_parser.add_argument("-t", "--threshold", type=float, default=0.5,
                 help="probability threshold for evaluating metrics")
 arg_parser.add_argument("--metric_opt", default="ba",
-                choices=["ba", "miou", "smoothness", "f1", "f2"],
+                choices=["ba", "miou", "smoothness", "f1", "f2", "pr"],
                 help="metric to optimize threshold with")
 arg_parser.add_argument("--metrics_eval", nargs="+", default=["miou", "ba", "auc"],
                 choices=["auc", "ba", "miou", "smoothness", "f1", "f2", "standard", "sp", "fpr"],
@@ -43,6 +46,10 @@ arg_parser.add_argument("--write_predictions", action="store_true",
                 help="write out predictions to file")
 arg_parser.add_argument("--csv_file", 
                 help="write output to CSV file")
+arg_parser.add_argument("--sesa_threshold", type=float,
+                help="area threshold for SESA cutoffs")
+arg_parser.add_argument("--pymol", action="store_true",
+                help="write out a pymol script for residue labels")
 ARGS = arg_parser.parse_args()
 
 # set up logging
@@ -116,9 +123,9 @@ def getAUC(Y, P, mesh=None, mask=None, threshold=None):
         N = 50
         t = np.linspace(0, 1, N)
         for i in range(N):
-            Ypr = (P[:,1] >= t[i]).astype(int)
-            Ypr = smoothMeshLabels(E, Ypr, 2, threshold=threshold, area_faces=area_faces, faces=F)
-            tn, fp, fn, tp = confusion_matrix(Y[mask], Ypr[mask]).ravel()
+            Yp = (P[:,1] >= t[i]).astype(int)
+            Yp = smoothMeshLabels(E, Yp, 2, threshold=threshold, area_faces=area_faces, faces=F)
+            tn, fp, fn, tp = confusion_matrix(Y[mask], Yp[mask]).ravel()
             
             tpr.append(tp/(tp+fn))
             fpr.append(fp/(fp+tn))
@@ -200,40 +207,64 @@ def printCSV(FH, metrics, label="", header=True):
             FH.write(','.join(headers) + '\n')
         FH.write(','.join(fields) + '\n')
 
-# def getResidueLabels(atoms, mesh, Y, kdt):
-    # bs_areas = np.zeros_like(Y, dtype=np.float32)
-    # np.add.at(bs_areas, mesh.faces[:, 0], mesh.area_faces/3)
-    # np.add.at(bs_areas, mesh.faces[:, 1], mesh.area_faces/3)
-    # np.add.at(bs_areas, mesh.faces[:, 2], mesh.area_faces/3)
+def getThreshold():
+    if os.path.splitext(ARGS.training_data)[1] == ".npz":
+        training = np.load(ARGS.training_data)
+        mask = training['Y'] >= 0
+        Ytr = training['Y'][mask]
+        Ptr = training['P'][mask]
+        if Ptr.ndim > 2:
+            Ptr = Ptr.mean(axis=-1) # reduce ensemble
+    else:
+        Ytr = []
+        Ptr = []
+        for line in open(ARGS.training_data):
+            filename = os.path.join(ARGS.path, line.strip())
+            data = np.load(filename)
+            
+            if ARGS.model_index is not None:
+                P = data['Pe'][:,:,ARGS.model_index]
+            else:
+                P = data['Pm']
+            Ytr.append(data['Y'])
+            Ptr.append(P)
+        Ytr = np.concatenate(Ytr)
+        Ptr = np.concatenate(Ptr)
+        mask = (Ytr >= 0)
+        Ytr = Ytr[mask]
+        Ptr = Ptr[mask]
     
-    # ni = (Y == 0)
-    # bs_areas[ni] = 0
+    t, m = chooseBinaryThreshold(Ytr, Ptr[:,1], metric_fns[ARGS.metric_opt])
+    #print("Optimized threshold ({}): {:.2f} score: {:.3f}".format(ARGS.metric_opt, t, m))
     
-    # mapPointFeaturesToStructure(mesh.vertices, atoms, bs_areas, 'bs_sesa', kdtree=kdt)
-    
-    # residue_dict = {}
-    # # aggregate over atom areas
-    # for atom in atoms:
-        # residue = atom.get_parent()
-        # residue_id = residue.get_full_id()
-        # if residue_id not in residue_dict:
-            # residue_dict[residue_id] = {
-                # 'sesa': 0,
-                # 'bs_sesa': 0
-            # }
-        # residue_dict[residue_id]['sesa'] += atom.xtra['sesa']
-        # residue_dict[residue_id]['bs_sesa'] += atom.xtra['bs_sesa']
-    
-    # for key in residue_dict:
-        # if residue_dict[key]['bs_sesa'] > 5.0:
-            # residue_dict[key]['label'] = 1.0
-        # else:
-            # residue_dict[key]['label'] = 0.0
-    
-    #return residue_dict
+    return t
 
-def smoothResiduePredictions(protein, residue_dict):
-    pass
+def writePymol(gt, pr, file_name="residue_labels.pml"):
+    tn = {}
+    tp = {}
+    fn = {}
+    fp = {}
+    confusion = [ [tn, fp], [fn, tp] ] # index by [y_gt][y_pr]
+    colors = [ ["smudge", "red"], ["violet", "orange"]]
+    for rid in gt:
+        chain, resi, _ = rid.split('.')
+        yi = gt[rid]["label"]
+        yj = pr[rid]["label"]
+        
+        if chain not in confusion[yi][yj]:
+            confusion[yi][yj][chain] = []
+        confusion[yi][yj][chain].append(resi)
+    
+    FH = open(file_name, "w")
+    for i in range(0, 2):
+        for j in range(0, 2):
+            for chain in confusion[i][j]:
+                FH.write("color {}, (chain {} and resi {})\n".format(
+                    colors[i][j],
+                    chain,
+                    "+".join(confusion[i][j][chain])
+                ))
+    FH.close()
 
 metric_fns = {
     "miou": lambda y1, y2: jaccard_score(y1, y2, average='weighted'),
@@ -243,47 +274,59 @@ metric_fns = {
     "f2": lambda y1, y2: fbeta_score(y1, y2, beta=2.0, average="binary"),
     "standard": lambda y1, y2: confusionMatrixMetircs(y1, y2),
     "sp": lambda y1, y2: specificity(y1, y2),
-    "fpr": lambda y1, y2: fpr(y1, y2)
+    "fpr": lambda y1, y2: fpr(y1, y2),
+    "pr": lambda y1, y2: precision_score(y1, y2, average="binary")
 }
 
+# Decide threshold if given training data
 if ARGS.training_data:
-    training = np.load(ARGS.training_data)
-    mask = training['Y'] >= 0
-    Ytr = training['Y'][mask]
-    Ptr = training['P'][mask]
-    if Ptr.ndim > 2:
-        Ptr = Ptr.mean(axis=-1) # reduce ensemble
-    
-    t, m = chooseBinaryThreshold(Ytr, Ptr[:,1], metric_fns[ARGS.metric_opt])
-    ARGS.threshold = t
-    print("Optimized threshold ({}): {:.2f} score: {:.3f}".format(ARGS.metric_opt, t, m))
+    ARGS.threshold = getThreshold()
 
+# Set up CSV file output
 if ARGS.csv_file:
-    CSV = open(ARGS.csv_file, "w")
+    if os.path.exists(ARGS.csv_file):
+        CSV_HEADER = False
+        CSV = open(ARGS.csv_file, "a")
+    else:
+        CSV_HEADER = True
+        CSV = open(ARGS.csv_file, "w")
 else:
     CSV = None
 
-header = True
-file_names = glob(os.path.join(ARGS.path, "*.npz"))
-lw = max([len(_)-len("./_predict.npz") for _ in file_names] + [len("Protein Identifier")])
+# Get list of datafiles to make predictions for
+if ARGS.data_files:
+    file_names = [os.path.join(ARGS.path, _.strip()) for _ in open(ARGS.data_files).readlines()]
+else:
+    file_names = glob(os.path.join(ARGS.path, "*.npz"))
+
+if ARGS.no_print_individual:
+    lw = len("Totals")
+else:
+    lw = max([len(_)-len("./_predict.npz") for _ in file_names] + [len("Protein Identifier")])
+
 metrics_all = []
+header = True
 for line in file_names:
     # load data arrays
     data = np.load(line)
     Y = data['Y']
-    P = data['Pm']
-    mask = (Y >= 0)
     V = data['V']
     F = data['F']
     mesh = trimesh.Trimesh(vertices=V, faces=F, process=False)
+    mask = (Y >= 0)
+    
+    if ARGS.model_index is not None:
+        P = data['Pe'][:,:,ARGS.model_index]
+    else:
+        P = data['Pm']
     
     # Get predictions for given threshold
-    Ypr = (P[:,1] >= ARGS.threshold).astype(int)
+    Y_ensemb = (P[:,1] >= ARGS.threshold).astype(int)
     
     if ARGS.min_area:
         # Apply smoothing
         E = mesh.edges_unique
-        Ypo = smoothMeshLabels(E, Ypr.copy(), 2, 
+        Y_smooth = smoothMeshLabels(E, Y_ensemb.copy(), 2, 
                 threshold=ARGS.min_area,
                 merge_nearby_clusters=True,
                 merge_distance=ARGS.merge_dist,
@@ -293,67 +336,41 @@ for line in file_names:
         )
     
     if not ARGS.no_residue_predictions:
-        # Get stucture based pooling
+        ## Get stucture based pooling
         
         # apply same processing as on training data
-        fname = line.replace("_predict.npz", "")
+        fname = line.replace("_ensemble.npz", "")
         fname = fname.replace("./", "")
-        structure = StructureData(fname+'.pdb', name=fname, path=ARGS.pdb_dir)
-        protein = getProtein(structure, D.regexes)
+        pname = fname + '.pdb'
+        processed = os.path.join('pdb_files', pname)
+        if os.path.exists(processed):
+            protein = StructureData(pname, path="pdb_files")
+        else:
+            structure = StructureData(pname, name=fname, path=ARGS.pdb_dir)
+            protein = getProtein(structure, D.regexes)
+            
+            # Clean the protein entity
+            protein, pqr = cleanProtein(protein, hydrogens=True, quiet=True)
+            protein.save(processed)
         
-        # Clean the protein entity
-        protein, pqr = cleanProtein(protein, hydrogens=True, quiet=False)
-        
-        # get atoms with sesa > 0
-        getAtomSESA(protein)
-        atoms = list(filter(lambda atom: 'sesa' in atom.xtra and atom.xtra['sesa'] > 0, [atom for atom in protein.get_atoms()]))
-        kdt = getAtomKDTree(atoms)
-        
-        # # map probabilities
-        # vertex_areas = np.zeros_like(Y, dtype=np.float32)
-        # np.add.at(vertex_areas, F[:, 0], mesh.area_faces/3)
-        # np.add.at(vertex_areas, F[:, 1], mesh.area_faces/3)
-        # np.add.at(vertex_areas, F[:, 2], mesh.area_faces/3)
-        
-        
-        # Ynm = Y.copy()
-        # Ynm[~mask] = 0 # remove mask
-        # map_gt = mapVertexProbabilitiesToStructure(V, atoms, Ynm, 2, kdtree=kdt, level=ARGS.level, reduce_method='max', vertex_weights=vertex_areas)
-        # map_p = mapVertexProbabilitiesToStructure(V, atoms, P, 2, kdtree=kdt, level=ARGS.level, reduce_method='max', vertex_weights=vertex_areas)
-        # map_pr = mapVertexProbabilitiesToStructure(V, atoms, Ypr, 2, kdtree=kdt, level=ARGS.level, reduce_method='max', vertex_weights=vertex_areas)
-        # map_po = mapVertexProbabilitiesToStructure(V, atoms, Ypo, 2, kdtree=kdt, level=ARGS.level, reduce_method='max', vertex_weights=vertex_areas)
-        
-        # Ys = []
-        # Yspr = []
-        # Yspo = []
-        # Ps = []
-        # ids = []
-        # for key in map_gt:
-            # Ys.append(map_gt[key][1])
-            # Yspr.append(map_pr[key][1])
-            # Yspo.append(map_pr[key][1])
-            # Ps.append(map_p[key])
-            # ids.append(key)
-        
-        # Ys = (np.array(Ys) >= 0.5).astype(int)
-        # Yspr = (np.array(Yspr) >= 0.5).astype(int)
-        # Yspo = (np.array(Yspo) >= 0.5).astype(int)
-        # Ps = np.array(Ps)
-        # Ysp = (Ps[:,1] >= ARGS.threshold)
         Ynm = Y.copy()
         Ynm[~mask] = 0 # remove mask
-        map_gt = vertexLabelsToResidueLabels(atoms, mesh, Ynm, nc=2, kdt=kdt)
+        map_gt, kdt = vertexLabelsToResidueLabels(protein, mesh, Ynm, nc=2, return_kdt=True, thresholds=ARGS.sesa_threshold)
+        
         if ARGS.min_area:
-            map_pr = vertexLabelsToResidueLabels(atoms, mesh, Ypo, nc=2, kdt=kdt)
+            map_pr = vertexLabelsToResidueLabels(protein, mesh, Y_smooth, nc=2, kdt=kdt, thresholds=ARGS.sesa_threshold)
         else:
-            map_pr = vertexLabelsToResidueLabels(atoms, mesh, Ypr, nc=2, kdt=kdt)
-        YS_gt = []
-        YS_pr = []
+            map_pr = vertexLabelsToResidueLabels(protein, mesh, Y_ensemb, nc=2, kdt=kdt)
+        Y_struct_gt = []
+        Y_struct_pr = []
         for key in map_gt:
-            YS_gt.append(map_gt[key]["label"])
-            YS_pr.append(map_pr[key]["label"])
-        YS_gt = np.array(YS_gt)
-        YS_pr = np.array(YS_pr)
+            Y_struct_gt.append(map_gt[key]["label"])
+            Y_struct_pr.append(map_pr[key]["label"])
+        Y_struct_gt = np.array(Y_struct_gt)
+        Y_struct_pr = np.array(Y_struct_pr)
+        
+        if ARGS.pymol:
+            writePymol(map_gt, map_pr, file_name="{}.pml".format(pname))
         
     # Get selected metrics
     metrics = { "no smoothing": {}}
@@ -374,51 +391,37 @@ for line in file_names:
                 roc, prc = getAUC(Y, P, mask=mask, mesh=mesh, threshold=ARGS.min_area)
                 metrics["smoothing"]["auroc"] = roc
                 metrics["smoothing"]["auprc"] = prc
-            
-            # # pooled labels
-            # roc, prc = getAUC(Ys, Ps)
-            # metrics["pooled"]["auroc"] = roc
-            # metrics["pooled"]["auprc"] = prc
         elif m == 'smoothness':
-            metrics["no smoothing"][m] = metric_fns[m](Ypr, E)
+            metrics["no smoothing"][m] = metric_fns[m](Y_ensemb, E)
             if ARGS.min_area:
-                metrics["smoothing"][m] = metric_fns[m](Ypo, E)
+                metrics["smoothing"][m] = metric_fns[m](Y_smooth, E)
         elif m == "standard":
             # unsmoothed
-            out = metric_fns[m](Y[mask], Ypr[mask])
+            out = metric_fns[m](Y[mask], Y_ensemb[mask])
             for o in out:
                 metrics["no smoothing"][o] = out[o]
             
             # smoothed labels
             if ARGS.min_area:
-                out = metric_fns[m](Y[mask], Ypo[mask])
+                out = metric_fns[m](Y[mask], Y_smooth[mask])
                 for o in out:
                     metrics["smoothing"][o] = out[o]
             
-            # pooled labels
-            # out = metric_fns[m](Ys, Ysp)
-            # for o in out:
-                # metrics["pooled"][o+"_P"] = out[o]
-            # out = metric_fns[m](Ys, Yspr)
-            # for o in out:
-                # metrics["pooled"][o+"_pr"] = out[o]
             if not ARGS.no_residue_predictions:
-                out = metric_fns[m](YS_gt, YS_pr)
+                # residue labels
+                out = metric_fns[m](Y_struct_gt, Y_struct_pr)
                 for o in out:
                     metrics["residue"][o] = out[o]
         else:
             # unsmoothed
-            metrics["no smoothing"][m] = metric_fns[m](Y[mask], Ypr[mask])
+            metrics["no smoothing"][m] = metric_fns[m](Y[mask], Y_ensemb[mask])
             
             # smoothed labels
             if ARGS.min_area:
-                metrics["smoothing"][m] = metric_fns[m](Y[mask], Ypo[mask])
+                metrics["smoothing"][m] = metric_fns[m](Y[mask], Y_smooth[mask])
             
-            # pooled labels
-            # metrics["pooled"][m+"_P"] = metric_fns[m](Ys, Ysp)
-            # metrics["pooled"][m+"_pr"] = metric_fns[m](Ys, Yspr)
             if not ARGS.no_residue_predictions:
-                metrics["residue"][m] = metric_fns[m](YS_gt, YS_pr)
+                metrics["residue"][m] = metric_fns[m](Y_struct_gt, Y_struct_pr)
     
     if not ARGS.no_print_individual:
         reportMetrics(metrics, header=header, label=("Protein Identifier", fname), label_width=lw, pad=6)
@@ -428,12 +431,7 @@ for line in file_names:
     
     if ARGS.write_predictions:
         # save new threshold predicition
-        np.savez_compressed("{}_smooth.npz".format(fname), Ygt=Y, P=P, t=ARGS.threshold, Ypr=Ypr, Ypo=Ypo, V=data['V'], F=data['F'])
-    
-    # save pooled predictions
-    # for i in range(ids):
-        # if Ys[i]:
-            # print(ids[i][2], ids[i][3][1])
+        np.savez_compressed("{}_smooth.npz".format(fname), Ygt=Y, P=P, t=ARGS.threshold, Y_ensemb=Y_ensemb, Y_smooth=Y_smooth, V=data['V'], F=data['F'])
 
 METRICS = {}
 for m in metrics_all:
@@ -442,7 +440,8 @@ reduceDict(METRICS, fn=np.nanmean)
 if ARGS.min_area:
     METRICS["smoothing"]["min_area"] = ARGS.min_area
     METRICS["smoothing"]["merge_distance"] = ARGS.merge_dist
+METRICS["threshold"] = {"threshold": ARGS.threshold}
 reportMetrics(METRICS, header=True, label=("", "Totals"), label_width=lw, pad=6)
 
 if ARGS.csv_file:
-    printCSV(CSV, METRICS, label="means", header=True)
+    printCSV(CSV, METRICS, label="means", header=CSV_HEADER)

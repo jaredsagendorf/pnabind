@@ -11,7 +11,7 @@ from pickle import load
 # third party packages
 import torch
 import numpy as np
-from torch_geometric.transforms import Compose, FaceToEdge
+from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures, GenerateMeshNormals, Cartesian, TwoHop
 from torch_geometric.data import DataLoader
 
 # geobind packages
@@ -19,8 +19,8 @@ from geobind.nn.utils import loadDataset
 from geobind.nn.models import MultiBranchNet
 from geobind.nn import Evaluator
 from geobind.nn import processBatch
-from geobind.nn.transforms import GeometricEdgeFeatures, ScaleEdgeFeatures
 from geobind.nn.metrics import auroc, auprc
+from geobind.nn.transforms import GeometricEdgeFeatures, ScaleEdgeFeatures
 
 #### Get command-line arguments
 arg_parser = argparse.ArgumentParser()
@@ -80,6 +80,26 @@ class EnsembleModel(object):
         
         return ys
 
+def getDataTransforms(args):
+    t_lookup = {
+        "FaceToEdge": (FaceToEdge, lambda ob: 0),
+        "GenerateMeshNormals": (GenerateMeshNormals, lambda ob: 0),
+        "TwoHop": (TwoHop, lambda ob: 0),
+        "PointPairFeatures": (PointPairFeatures, lambda ob: 4),
+        "Cartesian": (Cartesian, lambda ob: 3),
+        "GeometricEdgeFeatures": (GeometricEdgeFeatures, lambda ob: ob.edge_dim),
+        "ScaleEdgeFeatures": (ScaleEdgeFeatures, lambda ob: 0)
+    }
+    transforms = []
+    edge_dim = 0
+    for arg in args:
+        t = t_lookup[arg["name"]][0](**arg.get("kwargs", {}))
+        edge_dim += t_lookup[arg["name"]][1](t)
+        
+        transforms.append(t)
+    
+    return Compose(transforms), edge_dim
+
 # if ARGS.log_file is None:
     # logging.basicConfig(format='%(levelname)s:    %(message)s', level=logging.INFO)
 
@@ -89,12 +109,10 @@ with open(ARGS.config_file) as FH:
 
 #### Load evaluation data
 datafiles = [_.strip() for _ in open(ARGS.data_file).readlines()]
-edge_components = C["model"]["kwargs"]["kwargs2"].get("edge_components", 6)
-edge_scaling = C["model"]["kwargs"].get("scale_edge_features", None)
-transform = Compose([
-    GeometricEdgeFeatures(n_components=edge_components),
-    ScaleEdgeFeatures(method=edge_scaling)
-])
+
+trans_args = C["model"].get("transform_args", [])
+transform, edge_dim = getDataTransforms(trans_args)
+
 dataset, transforms, info = loadDataset(datafiles, C["nc"], "Y", ARGS.data_dir,
     cache_dataset=False,
     balance='unmasked',
@@ -157,10 +175,10 @@ with torch.no_grad():
             ROC.append(roc)
             PRC.append(prc)
             print("finished batch {} auprc: {:.3f} auroc {:.3f}".format(fname, prc, roc))
-    
+        
         if ARGS.write_predictions:
             # write prediction to file
-            np.savez_compressed(ospj(ARGS.write_predictions, "{}_predict.npz".format(fname)), Y=y, Pm=Pm, Pe=output, V=V, F=F)
+            np.savez_compressed(ospj(ARGS.write_predictions, "{}_ensemble.npz".format(fname)), Y=y, Pm=Pm, Pe=output, V=V, F=F, mask=mask)
         
         i += 1
 

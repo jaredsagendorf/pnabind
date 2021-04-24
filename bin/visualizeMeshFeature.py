@@ -48,20 +48,23 @@ multiclass_colors = np.array([
 
 def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, save=True, max_width=4, shift_axis='x', **kwargs):
     # figure out where to get color information
-    if(data is None and colors is None):
+    if data is None and colors is None:
         # just visualize the mesh geometry
         return mesh.show(**kwargs)
-    elif(colors is None):
+    elif colors is None:
         # compute colors from the data array
-        vertex_colors = []
-        for i in range(len(data)):
-            if(data[i].dtype == np.int64 or data[i].dtype == np.bool):
-                vertex_colors.append(trimesh.visual.to_rgba(int_color_map[data[i]+1]))
-            else:
-                vertex_colors.append(trimesh.visual.interpolate(data[i], color_map=color_map))
+        if np.ptp(data) == 0:
+            vertex_colors = trimesh.visual.to_rgba([0.8, 0.8, 0.8])
+        else:
+            vertex_colors = []
+            for i in range(len(data)):
+                if data[i].dtype == np.int64 or data[i].dtype == bool:
+                    vertex_colors.append(trimesh.visual.to_rgba(int_color_map[data[i]+1]))
+                else:
+                    vertex_colors.append(trimesh.visual.interpolate(data[i], color_map=color_map))
     else:
         # use the given colors
-        if(isinstance(colors, list)):
+        if isinstance(colors, list):
             vertex_colors = colors
         else:
             vertex_colors = [colors]
@@ -81,9 +84,10 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_m
         m.visual.vertex_colors = vertex_colors[i] 
         offset += 1.1*m.bounding_box.extents[si]
         scene.append(m)
-    print("returning scene")
+    
     if save and len(scene) == 1:
-        scene[0].export("mesh.ply")#, encoding="ascii")
+        scene[0].export("mesh.ply", encoding="ascii", vertex_normal=True)
+    
     return trimesh.Scene(scene).show(**kwargs)
 
 def getDataArrays(INP):
@@ -170,15 +174,6 @@ Enter one of the following:
 :""".strip()
 
 ### TODO: add selection like "Y X0 X1 YPR"
-
-# loop input parser
-#parser = argparse.ArgumentParser()
-#parser.add_argument("--quit", action='store_true', help="exit program")
-#parser.add_argument("--list", action='store_true', help="list features available in data file")
-#parser.add_argument("-u", type=float, default=None)
-#parser.add_argument("-l", type=float, default=None)
-#parser.add_argument("x", nargs='+')
-
 # main loop
 while True:
     inp = input(input_string).strip()
@@ -219,7 +214,7 @@ while True:
     else:
         INP = INP.split()
         arrays = getDataArrays(INP)
-        #print(arrays[0].min(), arrays[0].max(), arrays[0].mean())
+        
         if ARGS.multiclass_labels:
             visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors)
         else:
