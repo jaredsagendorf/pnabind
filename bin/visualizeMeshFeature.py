@@ -13,6 +13,8 @@ PARSER.add_argument("--smooth", action='store_true',
         help="Turn on smooth shading")
 PARSER.add_argument("--point_cloud", action='store_true',
         help="Render Point Clouds")
+PARSER.add_argument("--save_scene", action='store_true', default=False,
+        help="Save each rendered scene to file as .ply")
 ARGS = PARSER.parse_args()
 
 # builtin modules
@@ -46,7 +48,7 @@ multiclass_colors = np.array([
     [1.00, 0.00, 0.00] # 7: red (false prediction)
 ])
 
-def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, save=True, max_width=4, shift_axis='x', **kwargs):
+def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, save=True, max_width=4, shift_axis='x', normalize=True, **kwargs):
     # figure out where to get color information
     if data is None and colors is None:
         # just visualize the mesh geometry
@@ -61,6 +63,8 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_m
                 if data[i].dtype == np.int64 or data[i].dtype == bool:
                     vertex_colors.append(trimesh.visual.to_rgba(int_color_map[data[i]+1]))
                 else:
+                    if normalize:
+                        data[i] = (data[i] - data[i].min())/(data[i].max() - data[i].min())
                     vertex_colors.append(trimesh.visual.interpolate(data[i], color_map=color_map))
     else:
         # use the given colors
@@ -86,7 +90,7 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_m
         scene.append(m)
     
     if save and len(scene) == 1:
-        scene[0].export("mesh.ply", encoding="ascii", vertex_normal=True)
+        scene[0].export("scene.ply", encoding="ascii", vertex_normal=True)
     
     return trimesh.Scene(scene).show(**kwargs)
 
@@ -166,9 +170,8 @@ input_string = """
 Enter one of the following:
     l to list features
     m to visualize only the mesh
-    c to compare two data fields
+    c to compare two sets of labels
     q to exit
-    s to selected scene as a .ply file
     t a threshold to visualize predictions with: Y = (P1 >= t)
     a list of data fields, separated by space (e.g. "X1 X2 Y")
 :""".strip()
@@ -189,7 +192,7 @@ while True:
         t = float(inp[1:].strip())
         arrays = getDataArrays(['P1'])
         Y = (arrays[0] >= t)
-        visualizeMesh(mesh, [Y], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors)
+        visualizeMesh(mesh, [Y], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors, save=ARGS.save_scene)
     elif(INP == 'm'):
         visualizeMesh(mesh)
     elif(inp[0] == 'c'):
@@ -202,7 +205,7 @@ while True:
             P = arrays[1]
             ind = (D != P)
             D[ind] = 7
-            visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors)
+            visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors, save=ARGS.save_scene)
         else:
             D = arrays[0]
             P = arrays[1]
@@ -210,12 +213,12 @@ while True:
             m_pn = (D == 1)*(D != P)
             D[m_np] = 2
             D[m_pn] = 3
-            visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors)
+            visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors, save=ARGS.save_scene)
     else:
         INP = INP.split()
         arrays = getDataArrays(INP)
         
         if ARGS.multiclass_labels:
-            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors)
+            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors, save=ARGS.save_scene)
         else:
-            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors)
+            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors, save=ARGS.save_scene)
