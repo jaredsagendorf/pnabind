@@ -2,7 +2,7 @@ from .report_metrics import reportMetrics
 from .choose_binary_threshold import chooseBinaryThreshold
 from .metrics import roc_curve, precision_recall_curve, auc, balanced_accuracy_score
 from .metrics import recall_score, precision_score, jaccard_score, f1_score, accuracy_score
-from .metrics import auprc, auroc, brier_score_loss, matthews_corrcoef
+from .metrics import auprc, auroc, brier_score_loss, matthews_corrcoef, specificity
 from .mesh_label_smoothness import meshLabelSmoothness
 
 __all__ = [
@@ -21,6 +21,7 @@ __all__ = [
     "auroc",
     "brier_score_loss",
     "matthews_corrcoef",
-    "meshLabelSmoothness"
+    "meshLabelSmoothness",
+    "specificity"
 ]
 

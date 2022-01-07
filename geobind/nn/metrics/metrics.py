@@ -21,7 +21,14 @@ def auroc(y_gt, prob, pi=1, average='binary', **kwargs):
         fpr, tpr, _ = roc_curve(y_gt, prob[:,pi])
         auroc = auc(fpr, tpr)
     else:
-        nc = prob.shape[1]
-        auroc = roc_auc_score(np.eye(nc)[y_gt], prob, average=average, **kwargs)
+        #nc = prob.shape[1]
+        #auroc = roc_auc_score(np.eye(nc)[y_gt], prob, average=average, **kwargs)
+        auroc = roc_auc_score(y_gt, prob, average=average, **kwargs)
     
     return auroc
+
+def specificity(ygt, ypr):
+    ni = (ygt == 0)
+    tn = (ypr[ni] == 0).sum()
+    
+    return tn/(ni.sum())
