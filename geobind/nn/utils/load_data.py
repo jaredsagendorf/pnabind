@@ -128,7 +128,8 @@ def _processData(data_files, nc, labels_key,
         transform=None,
         pre_filter=None,
         pre_transform=None,
-        feature_mask=None
+        feature_mask=None,
+        label_type="vertex"
     ):
     data_list = []
     
@@ -136,18 +137,22 @@ def _processData(data_files, nc, labels_key,
     for f in data_files:
         data_arrays = np.load(f)
         
-        if remove_mask:
-            # remove any previous masking
-            data_arrays[labels_key][(data_arrays[labels_key] == -1)] = unmasked_class
-        
-        if balance == 'balanced':
-            idxb = balancedClassIndices(data_arrays[labels_key], range(nc), max_percentage=self.percentage)
-        elif balance == 'unmasked':
-            idxb = (data_arrays[labels_key] >= 0)
-        elif balance == 'all':
-            idxb = (data_arrays[labels_key] == data_arrays[labels_key])
+        Y = data_arrays[labels_key]
+        if label_type == "vertex":
+            if remove_mask:
+                # remove any previous masking
+                Y[(Y == -1)] = unmasked_class
+            
+            if balance == 'balanced':
+                idxb = balancedClassIndices(data_arrays[labels_key], range(nc), max_percentage=self.percentage)
+            elif balance == 'unmasked':
+                idxb = (data_arrays[labels_key] >= 0)
+            elif balance == 'all':
+                idxb = (data_arrays[labels_key] == data_arrays[labels_key])
+            else:
+                raise ValueError("Unrecognized value for `balance` keyword: {}".format(balance))
         else:
-            raise ValueError("Unrecognized value for `balance` keyword: {}".format(balance))
+            idxb = np.ones(len(data_arrays['X']), dtype=np.int32)
         
         if feature_mask is not None:
             X = data_arrays['X'][:, feature_mask]
@@ -156,7 +161,7 @@ def _processData(data_files, nc, labels_key,
         
         data = Data(
             x=torch.tensor(X, dtype=torch.float32),
-            y=torch.tensor(data_arrays[labels_key], dtype=torch.int64),
+            y=torch.tensor(Y, dtype=torch.int64),
             pos=torch.tensor(data_arrays['V'], dtype=torch.float32),
             norm=torch.tensor(data_arrays['N'], dtype=torch.float32),
             face=torch.tensor(data_arrays['F'].T, dtype=torch.int64),
