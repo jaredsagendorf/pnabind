@@ -1,7 +1,7 @@
 {
     "residue_regexes": [
         {
-            "residue_regex": "A|C|G|U",
+            "residue_regex": "^A$|^C$|^G$|^U$|^I$",
             "group": "standard RNA",
             "atom_regexes": [
                 {

@@ -1,7 +1,7 @@
 {
     "residue_regexes": [
         {
-            "residue_regex": "DA|DC|DG|DT",
+            "residue_regex": "DA|DC|DG|DT|DI",
             "group": "standard DNA",
             "atom_regexes": [
                 {
