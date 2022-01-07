@@ -1,10 +1,13 @@
+# built-in modules
+import warnings
+
 # third party modules
 import torch
 import numpy as np
 
 # geobind modules
 from geobind.nn import processBatch
-from geobind.nn.metrics import auroc, auprc, balanced_accuracy_score, recall_score, brier_score_loss
+from geobind.nn.metrics import auroc, auprc, balanced_accuracy_score, recall_score, brier_score_loss, specificity
 from geobind.nn.metrics import precision_score, jaccard_score, f1_score, accuracy_score, matthews_corrcoef
 from geobind.nn.metrics import reportMetrics, chooseBinaryThreshold, meshLabelSmoothness
 
@@ -19,7 +22,8 @@ METRICS_FN = {
     'f1_score': f1_score,
     'brier_score': brier_score_loss,
     'matthews_corrcoef': matthews_corrcoef,
-    'smoothness': meshLabelSmoothness
+    'smoothness': meshLabelSmoothness,
+    'specificity': specificity
 }
 
 def registerMetric(name, fn):
@@ -50,7 +54,18 @@ class Evaluator(object):
                     'mean_iou': {'average': 'weighted'},
                     'precision': {'average': 'binary', 'zero_division': 0},
                     'recall': {'average': 'binary', 'zero_division': 0},
-                    'accuracy': {}
+                    'accuracy': {},
+                    'specificity': {}
+                }
+                metrics_check = {
+                    'auroc': lambda n: (n[0] > 0) and (n[1] > 0),
+                    'auprc': lambda n: (n[0] > 0) and (n[1] > 0),
+                    'balanced_accuracy': lambda n: (n[0] > 0) and (n[1] > 0),
+                    'mean_iou': lambda n: (n[0] > 0) and (n[1] > 0),
+                    'precision': lambda n: (n[0] > 0) and (n[1] > 0),
+                    'recall': lambda n: (n[1] > 0),
+                    'accuracy': lambda n: True,
+                    'specificity': lambda n: (n[0] > 0)
                 }
             elif nc > 2:
                 # three or more classes 
@@ -58,32 +73,53 @@ class Evaluator(object):
                     labels = list(range(nc))
                     labels.remove(negative_class)
                 metrics={
-                    'balanced_accuracy': {},
-                    'mean_iou': {'average': 'weighted', 'labels': labels, 'zero_division': 0},
-                    'precision': {'average': 'weighted', 'zero_division': 0, 'labels': labels},
-                    'recall': {'average': 'weighted', 'zero_division': 0, 'labels': labels},
+                    #'balanced_accuracy': {},
+                    #'matthews_corrcoef': {},
+                    'mean_iou': {'average': 'macro', 'labels': labels, 'zero_division': 0},
+                    'precision': {'average': 'macro', 'zero_division': 0, 'labels': labels},
+                    'recall': {'average': 'macro', 'zero_division': 0, 'labels': labels},
                     'accuracy': {},
-                    'matthews_corrcoef': {},
-                    'auroc': {'average': 'macro'},
+                    #'auroc': {'average': 'macro'},
+                }
+                metrics_check = {
+                    'auroc': None,
+                    'auprc': None,
+                    'balanced_accuracy': None,
+                    'mean_iou': None,
+                    'precision': None,
+                    'recall': None,
+                    'accuracy': None,
+                    'specificity': None
                 }
             else:
                 # TODO - assume regression
                 pass
             self.metrics = metrics
+            self.metrics_check = metrics_check
         else:
             if not isinstance(metrics, dict):
                 raise ValueError("The argument 'metrics' must be a dictionary of kwargs and metric names or 'none'!")
             self.metrics = metrics
     
     @torch.no_grad()
-    def eval(self, dataset, eval_mode=True, batchwise=False, use_masks=True, return_masks=False, return_predicted=False, return_batches=True, xtras=None, split_batches=False, **kwargs):
-        """Returns numpy arrays!!!"""        
+    def eval(self, dataset, 
+            eval_mode=True,
+            batchwise=False,
+            use_mask=True,
+            return_masks=False,
+            return_predicted=False,
+            return_batches=True,
+            xtras=None,
+            split_batches=False,
+            **kwargs
+        ):
+        """Returns numpy arrays!!!"""
         
         def _loop(batch, data_items, y_gts, y_prs, outps, masks, batches):
             batch_data = processBatch(self.device, batch, xtras=xtras)
             batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['mask']
             output = self.model(batch)
-            if use_masks:
+            if use_mask:
                 y = y[mask].cpu().numpy()
                 out = self.post(output[mask]).cpu().numpy()
             else:
@@ -170,6 +206,8 @@ class Evaluator(object):
             report_threshold=False,
             metrics_calculation="total",
             split_batches=False,
+            use_mask=True,
+            label_type="vertex",
             **kwargs
         ):
         if self.metrics is None:
@@ -188,7 +226,7 @@ class Evaluator(object):
         
         # Determine what we were given (a dataset or labels/predictions)
         if len(args) == 1:
-            evald = self.eval(args[0], eval_mode=eval_mode, use_masks=False, return_masks=True, return_batches=True, batchwise=batchwise, split_batches=split_batches, **kwargs)
+            evald = self.eval(args[0], eval_mode=eval_mode, use_mask=False, return_masks=True, return_batches=True, batchwise=batchwise, split_batches=split_batches, **kwargs)
             if batchwise:
                 y_gt = evald['y']
                 outs = evald['output']
@@ -211,30 +249,46 @@ class Evaluator(object):
             masks = [masks]
         
         # Get predicted class labels
+        nan = float('nan')
         for i in range(len(y_gt)):
+            if label_type == "graph":
+                y_gt[i] = y_gt[i].flatten()
             y_pr = self.predictClass(outs[i], y_gt[i], metric_values, threshold=threshold, threshold_metric=threshold_metric, report_threshold=report_threshold)
             
             #if batches is not None:
                 #y_gt[~masks] = self.negative_class
                 #self.getGraphMetrics(batches[i], y_gt[i], y_pr, metric_values)
             
-            if masks is not None:    
+            if masks is not None and use_mask:    
                 y_gt[i] = y_gt[i][masks[i]]
                 y_pr = y_pr[masks[i]]
                 outs[i] = outs[i][masks[i]]
             
             # Compute metrics
+            n = np.bincount(y_gt[i])
+            if self.nc > 2:
+                y_gt[i] = np.eye(self.nc)[y_gt[i]]
+                y_pr = np.eye(self.nc)[y_pr]
             for metric, kw in self.metrics.items():
                 if metric == 'auprc' or metric == 'auroc':
                     # AUC metrics
-                    metric_values[metric].append(METRICS_FN[metric](y_gt[i], outs[i], **kw))
+                    if self.metrics_check[metric] is None or self.metrics_check[metric](n):
+                        metric_values[metric].append(METRICS_FN[metric](y_gt[i], outs[i], **kw))
+                    else:
+                        metric_values[metric].append(nan)
                 elif metric == 'smoothness':
                     # use `getGraphMetrics` for this
                     continue
                 else:
-                    metric_values[metric].append(METRICS_FN[metric](y_gt[i], y_pr, **kw))
-        for key in metric_values:
-            metric_values[key] = np.mean(metric_values[key])
+                    if self.metrics_check[metric] is None or self.metrics_check[metric](n):
+                        metric_values[metric].append(METRICS_FN[metric](y_gt[i], y_pr, **kw))
+                    else:
+                        metric_values[metric].append(nan)
+        with warnings.catch_warnings():
+            # ignore empty-slice warnings from numpy
+            warnings.simplefilter("ignore")
+            for key in metric_values:
+                metric_values[key] = np.nanmean(metric_values[key])
         
         return metric_values
     
