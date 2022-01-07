@@ -1,6 +1,7 @@
 # builtin modules
 import json
 import re
+import logging
 
 # third party modules
 import numpy as np
@@ -59,7 +60,7 @@ class AtomToClassMapper(object):
         assert isinstance(self.default, int)
     
     def __call__(self, residue, atom=None, hydrogens=True):
-        resn = residue.get_resname()
+        resn = residue.get_resname().strip()
         atmn = atom.name.strip()
         if atom.element != 'H':
             # a non-hydrogen atom
@@ -89,13 +90,13 @@ class AtomToClassMapper(object):
                     break
             return found
         
-        resn = residue.get_resname()
+        resn = residue.get_resname().strip()
         found = _test(self, resn)
         
         if (not found) and allow_modified:
             # check chemical components parent
             if resn in data.chem_components:
-                parn = data.chem_components[resn]['_chem_comp.mon_nstd_parent_comp_id']
+                parn = data.chem_components[resn]['_chem_comp.mon_nstd_parent_comp_id'].strip()
                 found = _test(self, parn)
         
         return found
@@ -199,9 +200,12 @@ def assignMeshLabelsFromList(model, mesh, residue_ids,
     for res_id in residue_ids:
         cid, num, ins = res_id.split('.')
         rid = (' ', int(num), ins.replace('_', ' '))
-        residue = model[cid][rid]
-        for atom in residue:
-            atom.xtra[key] = cl
+        if cid in model and rid in model[cid]:
+            residue = model[cid][rid]
+            for atom in residue:
+                atom.xtra[key] = cl
+        else:
+            logging.info("%s.%s: residue '%s' not found for label mapping!", model.get_parent().get_id(), cid, res_id)
     
     # map to vertices
     Y = mapStructureFeaturesToMesh(mesh, model, [key], hydrogens=hydrogens, **kwargs)
