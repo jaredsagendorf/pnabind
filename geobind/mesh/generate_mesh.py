@@ -1,5 +1,6 @@
 # builtin modules
 import os
+import logging
 
 # third party modules
 import numpy as np
@@ -12,8 +13,22 @@ from geobind.structure.structure import StructureData
 
 def generateMesh(structure, 
         prefix=None, basedir=None, clean=True, hydrogens=True, quiet=True, 
-        method='nanoshaper', selection=None, **kwargs
+        method='nanoshaper', selection=None, fallback=None, **kwargs
     ):
+    def _makeMesh(method, structure):
+        if(method == 'nanoshaper'):
+            # Run NanoShaper
+            mesh = runNanoShaper(structure.atom_list, prefix, basedir, clean=clean, hydrogens=hydrogens, quiet=quiet, **kwargs)
+        elif(method == 'msms'):
+            # Run MSMS
+            mesh = runMSMS(structure.atom_list, prefix, basedir, clean=clean, hydrogens=hydrogens, quiet=quiet, **kwargs)
+        elif(method == 'edtsurf'):
+            # Run EDTSurf
+            pdbfile = structure.save('tmp.pdb')
+            mesh = runEDTSurf(pdbfile, prefix, basedir, clean=clean, quiet=quiet, **kwargs)
+        
+        return mesh
+    
     # Check what we have been given
     if(isinstance(structure, str)):
         # Check if PQR file exists
@@ -48,15 +63,12 @@ def generateMesh(structure,
     if(basedir == '.' or basedir is None):
         basedir = os.getcwd()
     
-    if(method == 'nanoshaper'):
-        # Run NanoShaper
-        mesh = runNanoShaper(structure.atom_list, prefix, basedir, clean=clean, hydrogens=hydrogens, quiet=quiet, **kwargs)
-    elif(method == 'msms'):
-        # Run MSMS
-        mesh = runMSMS(structure.atom_list, prefix, basedir, clean=clean, hydrogens=hydrogens, quiet=quiet, **kwargs)
-    elif(method == 'edtsurf'):
-        # Run EDTSurf
-        pdbfile = structure.save('tmp.pdb')
-        mesh = runEDTSurf(pdbfile, prefix, basedir, clean=clean, quiet=quiet, **kwargs)
+    try:
+        mesh = _makeMesh(method, structure)
+    except FileNotFoundError as e:
+        if method == fallback:
+            raise e
+        logging.info("%s failed to produce any output. Falling back to %s", method, fallback)
+        mesh = _makeMesh(fallback, structure)
     
     return mesh
