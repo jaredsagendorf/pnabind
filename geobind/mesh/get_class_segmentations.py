@@ -12,7 +12,8 @@ def getClassSegmentations(edges, labels,
             vertices=None,
             merge_distance=10.0,
             no_merge=[],
-            check_mesh_intersection=True
+            check_mesh_intersection=True,
+            return_vertex_areas=False
     ):
     """This function identifies clusters of connected vertices which share a common class label and
     returns them as a list of vertex indices as well as arrays containing the area of each cluster, 
@@ -22,13 +23,13 @@ def getClassSegmentations(edges, labels,
     # compute a weight for each node
     if faces is not None and area_faces is not None:
         # use face areas to assign node weights
-        node_areas = np.zeros_like(nodes, dtype=np.float32)
-        np.add.at(node_areas, faces[:, 0], area_faces/3)
-        np.add.at(node_areas, faces[:, 1], area_faces/3)
-        np.add.at(node_areas, faces[:, 2], area_faces/3)
+        vertex_areas = np.zeros_like(nodes, dtype=np.float32)
+        np.add.at(vertex_areas, faces[:, 0], area_faces/3)
+        np.add.at(vertex_areas, faces[:, 1], area_faces/3)
+        np.add.at(vertex_areas, faces[:, 2], area_faces/3)
     else:
         # equal weighting for every node
-        node_areas = np.ones_like(nodes, dtype=np.float32)
+        vertex_areas = np.ones_like(nodes, dtype=np.float32)
     
     # determine connected components based on class and adjacency and assign each cluster to a 
     # class label
@@ -112,6 +113,9 @@ def getClassSegmentations(edges, labels,
     
     # compute an area for each cluster based on node weights
     cluster_areas = np.zeros(num_clusters)
-    np.add.at(cluster_areas, cluster_idx, node_areas)
+    np.add.at(cluster_areas, cluster_idx, vertex_areas)
     
-    return clusters, cluster_idx, cluster_areas, cluster_labels
+    if return_vertex_areas:
+        return clusters, cluster_idx, cluster_areas, cluster_labels, vertex_areas
+    else:
+        return clusters, cluster_idx, cluster_areas, cluster_labels

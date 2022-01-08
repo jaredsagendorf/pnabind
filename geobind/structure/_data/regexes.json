@@ -10,5 +10,11 @@
 		"PYRIMIDINES": "^DT$|^DC$|^DU$",
 		"PURINES": "^DG$|^DA$|^DI$",
 		"BACKBONE": "^P$|^C[1-5]['\\*]$|^OP1$|^OP2$|^O1P$|^O2P$|^O[3-5]['\\*]$|^HO*[1-5]['\\*]+$"
+	},
+    "RNA": {
+		"STANDARD_NUCLEOTIDES": "^G$|^A$|^U$|^C$|^I$",
+		"PYRIMIDINES": "^C$|^U$",
+		"PURINES": "^G$|^A$|^I$",
+		"BACKBONE": "^P$|^C[1-5]['\\*]$|^OP1$|^OP2$|^O1P$|^O2P$|^O[3-5]['\\*]$|^HO*[1-5]['\\*]+$"
 	}
 }

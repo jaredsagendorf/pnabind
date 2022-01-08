@@ -21,9 +21,9 @@ def padCoordinates(pqrFile):
     padded.close()
     shutil.move("tmp.pqr", pqrFile)
 
-def runAPBS(structure, prefix="tmp", basedir='.', quiet=True, pqr=None, clean=True, space=0.3, cfac=1.7):
+def runAPBS(structure, prefix="tmp", basedir='.', quiet=True, pqr=None, clean=True, space=0.3, cfac=1.7, fadd=20):
     """ run APBS and return potential """
-    if(pqr is None):
+    if pqr is None:
         tmp = os.path.join(basedir, "{}.pdb".format(prefix))
         pqr = os.path.join(basedir, "{}.pqr".format(prefix))
     
@@ -46,7 +46,7 @@ def runAPBS(structure, prefix="tmp", basedir='.', quiet=True, pqr=None, clean=Tr
     padCoordinates(pqr)
     
     # run psize to get grid length parameters
-    stdout = subprocess.getoutput("psize --space={} --cfac={} '{}'".format(space, cfac, pqr))
+    stdout = subprocess.getoutput("psize --space={} --cfac={} --fadd={} '{}'".format(space, cfac, fadd, pqr))
     cglenMatch = re.search('Coarse grid dims = (\d*\.?\d+) x (\d*\.?\d+) x (\d*\.?\d+) A', stdout, re.MULTILINE)
     cgx = cglenMatch.group(1)
     cgy = cglenMatch.group(2)

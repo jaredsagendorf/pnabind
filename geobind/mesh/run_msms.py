@@ -48,16 +48,16 @@ def runMSMS(atoms, file_prefix='mesh', basedir='.',
         "-af", "{}.area".format(file_prefix),
         "-surface",  msms_opts["surface"]
     ]
-    if(quiet):
+    if quiet:
         FNULL = open(os.devnull, 'w')
         subprocess.call(args, stdout=FNULL, stderr=FNULL)
         FNULL.close()
     else:
         subprocess.call(args)
     
-    if(area_only):
+    if area_only:
         # delete/move files and return path to the area file
-        if(clean):
+        if clean:
             os.remove("{}_coords.xyzr".format(file_prefix))
         else:
             __move("{}_coords.xyzr".format(file_prefix), basedir)
@@ -92,7 +92,7 @@ def runMSMS(atoms, file_prefix='mesh', basedir='.',
         faces = np.array(faces, dtype=np.int32)
         
         # clean up MSMS files
-        if(clean):
+        if clean:
             os.remove("{}.face".format(file_prefix))
             os.remove("{}.vert".format(file_prefix))
             os.remove("{}_coords.xyzr".format(file_prefix))
@@ -104,4 +104,4 @@ def runMSMS(atoms, file_prefix='mesh', basedir='.',
             __move("{}.area".format(file_prefix), basedir)
         
         # return mesh
-        return Mesh(V=vertexs, F=faces, N=normals, name=file_prefix, **mesh_kwargs)
+        return Mesh(vertices=vertexs, faces=faces, vertex_normals=normals, name=file_prefix, **mesh_kwargs)

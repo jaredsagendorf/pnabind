@@ -93,6 +93,9 @@ class StructureData(object):
             self.cache["kdtree"] = getAtomKDTree(self.atom_list, engine='biopython')
         return self.cache["kdtree"]
     
+    def get_parent(self):
+        return self.structure.get_parent()
+    
     def add(self, item):
         self.structure.add(item)
     
