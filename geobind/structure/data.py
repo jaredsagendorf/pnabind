@@ -63,7 +63,17 @@ class Data(object):
             "DA",
             "DC",
             "DG",
-            "DT"
+            "DT",
+            "DI",
+        ]
+        
+        # standard RNA nucleotides
+        self.standard_RNA_nucleotides = [
+            "A",
+            "C",
+            "G",
+            "U",
+            "I"
         ]
         
         # map from 3 letter residue code to 1 letter
@@ -124,8 +134,8 @@ class Data(object):
         with open(os.path.join(DATA_PATH, 'standard-sesa-H.json')) as FILE:
             self.standard_sesa_H = json.load(FILE)
         
-        with open(os.path.join(DATA_PATH, 'buried_sesa_cutoffs.json')) as FILE:
-            self.buried_sesa_cutoffs = json.load(FILE)
+        with open(os.path.join(DATA_PATH, 'sesa_cutoffs.json')) as FILE:
+            self.sesa_cutoffs = json.load(FILE)
         
         # Hydrogen bond donor/acceptor data
         with open(os.path.join(DATA_PATH,'hbond-data.json')) as FILE:
@@ -178,5 +188,19 @@ class Data(object):
         
         with open(os.path.join(DATA_PATH, 'MULTICLASS_STANDARD_SSDNA.json')) as FILE:
             self.label_sets["MULTICLASS_STANDARD_SSDNA"] = json.load(FILE)
+    
+    def getAtomRadius(self, atom, radii_set="amber"):
+        name = atom.name.strip()
+        element = atom.element
+        residue = atom.get_parent().get_resname()
+        
+        if radii_set == "amber":
+            default = {'H': 1.0, '*': 1.8}
+            if residue in self.vdw_radii and name in self.vdw_radii[residue]:
+                return self.vdw_radii[residue][name]
+            elif element in default:
+                return default[element]
+            else:
+                return default['*']
 
 data = Data()

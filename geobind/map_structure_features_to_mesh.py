@@ -3,6 +3,7 @@ import numpy as np
 
 # geobind modules
 from geobind.mesh import mapPointFeaturesToMesh
+from geobind.structure.data import data as D
 
 def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None, hydrogens=True, impute=True, **kwargs):
     """
@@ -33,7 +34,7 @@ def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None,
             continue
         
         coords.append(atom.coord)
-        radii.append(atom.xtra["radius"])
+        radii.append(atom.xtra.get("radius", D.getAtomRadius(atom)))
         features.append(list(map(F, feature_names)))
     features = np.array(features)
 
