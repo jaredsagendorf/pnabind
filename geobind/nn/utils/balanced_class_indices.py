@@ -9,6 +9,13 @@ def balancedClassIndices(y, classes, max_percentage=1.0, shuffle=True, return_ma
     
     # find maximum number of class labels to keep
     nb = int(max_percentage*min([idx.sum() for idx in idxs]))
+    if nb == 0:
+        # use all vertices
+        if return_mask:
+            return (y >= 0)
+        else:
+            return y
+    
     for i in range(len(idxs)):
         # exclude any indices above nb
         idx = np.argwhere(idxs[i]).flatten()
