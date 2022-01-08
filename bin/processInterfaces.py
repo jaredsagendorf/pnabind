@@ -54,26 +54,8 @@ import geobind
 from geobind import mapStructureFeaturesToMesh, AtomToClassMapper, vertexLabelsToResidueLabels
 from geobind.structure.data import data as D
 from geobind.structure import StructureData, pairsWithinDistance
-from geobind.structure import ResidueMutator
+from geobind.structure import ResidueMutator, splitEntities
 from geobind.utils import Interpolator
-
-def getEntities(structure, regexes, atom_mapper=None, mi=0):
-    """Docstring"""
-    pro = []
-    lig = []
-    for chain in structure[mi]:
-        for residue in chain:
-            resname = residue.get_resname()
-            if regexes['PROTEIN']['STANDARD_RESIDUES'].search(resname):
-                pro.append(residue.get_full_id())
-            
-            if atom_mapper:
-                if atom_mapper.testResidue(residue):
-                    lig.append(residue.get_full_id())
-            else:
-                lig.append(residue.get_full_id())
-    
-    return structure.slice(structure, pro, '{}_protein'.format(structure.name)), structure.slice(structure, lig, '{}_ligand'.format(structure.name))
 
 def accumulateSESA(res_dict, atoms, key):
     if isinstance(atoms, StructureData):
@@ -153,10 +135,23 @@ def main():
         ### LOAD STRUCTURE #########################################################################
         protein_id = '.'.join(fileName.split('.')[0:-1]) + '_protein'
         structure = StructureData(fileName, name=protein_id, path=C["PDB_FILES_PATH"])
-        protein, lig = getEntities(structure, D.regexes, atom_mapper)
+        protein, lig = splitEntities(structure, D.regexes, atom_mapper)
+        
+        # determine how we define binding site
+        res_ids = None
+        if ARGS.residue_ids:
+            res_ids = RIFH.readline().strip().split(',')
+            if '' in res_ids:
+                res_ids.remove('')
         
         # Clean the protein entity
-        protein, pqr = geobind.structure.cleanProtein(protein, res_mutator, hydrogens=C['HYDROGENS'])
+        try:
+            protein, pqr = geobind.structure.cleanProtein(protein, res_mutator, hydrogens=C['HYDROGENS'], remove_numerical_chain_id=True, binding_site_ids=res_ids)
+            if ARGS.label_method == "structure_structure_distance":
+                res_ids, lig_ids = pairsWithinDistance(protein, lig, distance=C.get("ATOM_DISTANCE_CUTOFF", 4.0), hydrogens=False)
+        except:
+            logging.info("Error: could not clean protein structure (%s). Verify quality!", protein_id)
+            continue
         
         ### MESH GENERATION ########################################################################
         # Write a PDB file matching chain
@@ -164,12 +159,16 @@ def main():
         
         # Generate a mesh
         mesh_prefix = "{}_mesh".format(protein_id)
-        mesh_kwargs = dict(op_mode='normal', surface_type='skin', skin_parameter=0.45, grid_scale=C.get("GRID_SCALE", 0.8))
+        mesh_kwargs = dict(op_mode='normal', surface_type='skin', 
+                skin_parameter=0.45, grid_scale=C.get("GRID_SCALE", 0.8),
+                mesh_kwargs={"remove_disconnected_components":C.get("REMOVE_DISCONNECTED_COMPONENTS", True)}
+        )
         if ARGS.refresh:
             mesh = geobind.mesh.generateMesh(protein, 
                 prefix=mesh_prefix,
                 basedir=C["MESH_FILES_PATH"],
                 clean=(not ARGS.debug),
+                fallback="msms",
                 **mesh_kwargs
             )
             logging.info("Computed new mesh for: %s", protein_id)
@@ -186,6 +185,7 @@ def main():
                     prefix=mesh_prefix,
                     basedir=C["MESH_FILES_PATH"],
                     clean=(not ARGS.debug),
+                    fallback="msms",
                     **mesh_kwargs
                 )
                 logging.info("Computed new mesh for: %s", protein_id)
@@ -271,11 +271,10 @@ def main():
                     logging.info("Loaded accessibility %s from file.", accessfile)
                 else:
                     try:
-                        phi, acc = geobind.structure.runAPBS(protein, protein_id, pqr=pqr, basedir=C["ELECTROSTATICS_PATH"])
-                    except subpro.CalledProcessError:
+                        phi, acc = geobind.structure.runAPBS(protein, protein_id, pqr=pqr, basedir=C["ELECTROSTATICS_PATH"], **C.get("ELECTROSTATICS_KW", {}))
+                    except subprocess.CalledProcessError:
                         # try with coarser values
-                        phi, acc = geobind.structure.runAPBS(protein, protein_id, pqr=pqr, basedir=C["ELECTROSTATICS_PATH"], space=0.5, cfac=1.5)
-                
+                        phi, acc = geobind.structure.runAPBS(protein, protein_id, pqr=pqr, basedir=C["ELECTROSTATICS_PATH"], space=0.6, cfac=1.5)
                 Xe, features_e = geobind.mesh.mapElectrostaticPotentialToMesh(mesh, phi, acc, efield=True, diff_method='five_point_stencil', sphere_average=True, laplace_smooth=True)
                 FEATURE_NAMES += features_e
                 FEATURES.append(Xe)
@@ -286,20 +285,12 @@ def main():
             # Compute labels
             logging.info("Computing a new set of labels for %s" , protein_id)
             
-            # determine how we define binding site
-            if ARGS.residue_ids:
-                res_ids = RIFH.readline().strip().split(',')
-            elif ARGS.label_method == "structure_vertex_distance":
-                res_ids = None
-            elif ARGS.label_method == "structure_structure_distance":
-                res_ids, lig_ids = pairsWithinDistance(protein, lig, distance=C.get("ATOM_DISTANCE_CUTOFF", 4.0), hydrogens=False)
-            
-            if res_ids:
+            if res_ids is not None:
                 Y = geobind.assignMeshLabelsFromList(protein, mesh, res_ids,
                     weight_method='linear',
                     distance_cutoff=1.5,
                     smooth=C["SMOOTH_LABELS"],
-                    smoothing_threshold=C.get("SMOOTHING_THRESHOLD", 50.0),
+                    smoothing_threshold=C.get("SMOOTHING_THRESHOLD", 75.0),
                     no_smooth=C.get("NO_SMOOTH_CLASSES", [1]),
                     mask=C["MASK_LABELS"],
                     mask_cutoff=C.get("MASK_DISTANCE_CUTOFF", 3.0)
@@ -307,11 +298,12 @@ def main():
             else:
                 Y = geobind.assignMeshLabelsFromStructure(lig, mesh, atom_mapper,
                     smooth=C["SMOOTH_LABELS"],
-                    smoothing_threshold=C.get("SMOOTHING_THRESHOLD", 50.0),
+                    smoothing_threshold=C.get("SMOOTHING_THRESHOLD", 75.0),
                     no_smooth=C.get("NO_SMOOTH_CLASSES", [1]),
                     mask=C["MASK_LABELS"],
                     distance_cutoff=C["MESH_DISTANCE_CUTOFF"],
-                    mask_cutoff=C.get("MASK_DISTANCE_CUTOFF", 3.0)
+                    mask_cutoff=C.get("MASK_DISTANCE_CUTOFF", 3.0),
+                    hydrogens=False
                 )
             res_ids = vertexLabelsToResidueLabels(protein, mesh, Y, nc=2)
         

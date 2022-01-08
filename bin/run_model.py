@@ -63,7 +63,7 @@ dataset, transforms, info = loadDataset(datafiles, C["nc"], C["labels_key"], C["
         remove_mask=remove_mask,
         scale=True,
         pre_transform=Compose([FaceToEdge(remove_faces=False), GeometricEdgeFeatures(), ScaleEdgeFeatures(method=C["model"]["kwargs"].get("scale_edge_features", None))])
-    )
+)
 
 # prepate data for CPU
 DL= DataLoader(dataset, batch_size=1, shuffle=False, pin_memory=True)

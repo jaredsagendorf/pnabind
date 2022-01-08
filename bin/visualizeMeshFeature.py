@@ -48,23 +48,23 @@ multiclass_colors = np.array([
     [1.00, 0.00, 0.00] # 7: red (false prediction)
 ])
 
-def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, save=True, max_width=4, shift_axis='x', normalize=True, **kwargs):
+def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, save=True, max_width=4, shift_axis='x', normalize=True, scene_name="scene", **kwargs):
     # figure out where to get color information
     if data is None and colors is None:
         # just visualize the mesh geometry
         return mesh.show(**kwargs)
     elif colors is None:
         # compute colors from the data array
-        if np.ptp(data) == 0:
-            vertex_colors = trimesh.visual.to_rgba([0.8, 0.8, 0.8])
-        else:
-            vertex_colors = []
-            for i in range(len(data)):
-                if data[i].dtype == np.int64 or data[i].dtype == bool:
-                    vertex_colors.append(trimesh.visual.to_rgba(int_color_map[data[i]+1]))
+        vertex_colors = []
+        for i in range(len(data)):
+            if data[i].dtype == np.int64 or data[i].dtype == bool:
+                vertex_colors.append(trimesh.visual.to_rgba(int_color_map[data[i]+1]))
+            else:
+                if normalize:
+                    data[i] = (data[i] - data[i].min())/(data[i].max() - data[i].min())
+                if np.ptp(data) == 0:
+                    vertex_colors = trimesh.visual.to_rgba([0.8, 0.8, 0.8])
                 else:
-                    if normalize:
-                        data[i] = (data[i] - data[i].min())/(data[i].max() - data[i].min())
                     vertex_colors.append(trimesh.visual.interpolate(data[i], color_map=color_map))
     else:
         # use the given colors
@@ -90,7 +90,7 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_m
         scene.append(m)
     
     if save and len(scene) == 1:
-        scene[0].export("scene.ply", encoding="ascii", vertex_normal=True)
+        scene[0].export("{}.ply".format(scene_name), encoding="ascii", vertex_normal=True)
     
     return trimesh.Scene(scene).show(**kwargs)
 
@@ -191,7 +191,7 @@ while True:
     elif(inp[0] == 't'):
         t = float(inp[1:].strip())
         arrays = getDataArrays(['P1'])
-        Y = (arrays[0] >= t)
+        Y = (arrays[0] >= t).astype(int)
         visualizeMesh(mesh, [Y], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors, save=ARGS.save_scene)
     elif(INP == 'm'):
         visualizeMesh(mesh)
@@ -218,7 +218,8 @@ while True:
         INP = INP.split()
         arrays = getDataArrays(INP)
         
+        scene_name = "_".join(INP)
         if ARGS.multiclass_labels:
-            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors, save=ARGS.save_scene)
+            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors, save=ARGS.save_scene, scene_name=scene_name)
         else:
-            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors, save=ARGS.save_scene)
+            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors, save=ARGS.save_scene, scene_name=scene_name)

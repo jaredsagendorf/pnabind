@@ -20,7 +20,7 @@ arg_parser.add_argument("--output_path", help="Directory to place output.")
 arg_parser.add_argument("--run_name", help="Name of this run to use for output files.")
 
 # dataset options
-arg_parser.add_argument("--balance", type=str, choices=['balanced', 'unmasked', 'all'], default=None,
+arg_parser.add_argument("--balance", type=str, choices=['balanced', 'unmasked', 'all'], default='unmasked',
                 help="Decide which set of training labels to use.")
 arg_parser.add_argument("--no_shuffle", action="store_false", dest="shuffle", default=None,
                 help="Don't shuffle training data.")
@@ -34,8 +34,13 @@ arg_parser.add_argument("--batch_size", type=int,
                 help="Size of the mini-batches.")
 arg_parser.add_argument("--epochs", type=int,
                 help="Number of epochs to train for.")
+arg_parser.add_argument("--best_state_metric", type=str, default='auroc',
+                help="Metric to track while training")
 arg_parser.add_argument("--weight_method", type=str, choices=['none', 'batch', 'dataset'], default=None,
                 help="How to weight each class when training on dataset.")
+arg_parser.add_argument("--checkpoint_file", type=str,
+                help="File containing starting values for learnable parameters")
+
 
 # misc options
 arg_parser.add_argument("--single_gpu", action="store_true", default=None,
@@ -44,6 +49,8 @@ arg_parser.add_argument("--no_random", action="store_true", default=None,
                 help="Use a fixed random seed (useful for debugging).")
 arg_parser.add_argument("--debug", action="store_true", default=None,
                 help="Print additonal debugging information.")
+arg_parser.add_argument("--cpu_only", action="store_true", default=None,
+                help="Don't use GPU.")
 
 # Standard packages
 import os
@@ -64,7 +71,7 @@ from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures, G
 
 # Geobind modules
 from geobind.nn.utils import loadDataset, classWeights
-from geobind.nn import Trainer, Evaluator
+from geobind.nn import Trainer, Evaluator, BalancedDataLoader
 from geobind.nn.models import NetConvPool, PointNetPP, MultiBranchNet, FFNet
 from geobind.nn.metrics import reportMetrics
 from geobind.nn.transforms import GeometricEdgeFeatures, ScaleEdgeFeatures
@@ -205,7 +212,8 @@ train_dataset, transforms, train_info = loadDataset(train_datafiles, C["nc"], C[
         remove_mask=remove_mask,
         scale=True,
         pre_transform=transform,
-        feature_mask=feature_mask
+        feature_mask=feature_mask,
+        label_type=C.get("label_type", "vertex")
     )
 valid_dataset, _, valid_info = loadDataset(valid_datafiles, C["nc"], C["labels_key"], C["data_dir"],
         cache_dataset=C.get("cache_dataset", False),
@@ -213,6 +221,7 @@ valid_dataset, _, valid_info = loadDataset(valid_datafiles, C["nc"], C["labels_k
         remove_mask=False,
         scale=True,
         feature_mask=feature_mask,
+        label_type=C.get("label_type", "vertex"),
         **transforms
     )
 
@@ -221,6 +230,10 @@ pickle.dump(transforms["scaler"], open(ospj(run_path, 'scaler.pkl'), "wb"))
 
 if torch.cuda.device_count() <= 1 or C["single_gpu"] or C["debug"]:
     # prepate data for single GPU or CPU 
+    #if C["nc"] > 2:
+    #    DL_tr = BalancedDataLoader(train_dataset, C["nc"], C["batch_size"])
+    #    DL_vl = BalancedDataLoader(train_dataset, C["nc"], 1, shuffle=False)
+    #else:
     DL_tr = DataLoader(train_dataset, batch_size=C["batch_size"], shuffle=C["shuffle"], pin_memory=True)
     DL_vl = DataLoader(valid_dataset, batch_size=1, shuffle=False, pin_memory=True) 
 else:
@@ -249,7 +262,7 @@ for name, param in model.named_parameters():
         logging.debug("%s: %s", name, param.data.shape)
 
 # Set up multiple GPU utilization
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() and not C.get("cpu_only", False) else 'cpu')
 if torch.cuda.device_count() <= 1 or C["single_gpu"] or C["debug"]:
     logging.info("Running model on device %s.", device)
 else:
@@ -257,11 +270,26 @@ else:
     logging.info("Distributing model on %d gpus with root %s", torch.cuda.device_count(), device)
 model = model.to(device)
 
+# load checkpoint file if provided
+if ARGS.checkpoint_file is not None:
+    prefix = "branch1."
+    checkpoint = torch.load(ARGS.checkpoint_file, map_location=device)
+    state_dict = model.state_dict()
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                continue
+            
+            name = prefix+name
+            if name in checkpoint["model_state_dict"]:
+                param.copy_(checkpoint["model_state_dict"][name])
+                print(name)
+    
 ####################################################################################################
 ### Set up optimizer, scheduler and loss ###########################################################
 
 # optimizer
-model_parameters = addWeightDecay(model, C["optimizer"]["kwargs"]["weight_decay"])
+model_parameters = addWeightDecay(model, C["optimizer"]["kwargs"]["weight_decay"], skip_list=["bin_c,", "bin_w"])
 
 if(C["optimizer"]["name"] == "adam"):
     optimizer = torch.optim.Adam(model_parameters, **C["optimizer"]["kwargs"])
@@ -296,17 +324,20 @@ trainer = Trainer(model, C["nc"], optimizer, criterion, device, scheduler, evalu
 # determine how to weight classes
 if C["weight_method"] == 'dataset':
     opt_kw = {
-        "weight": classWeights(DL_tr, C["nc"], device),
-        "use_weight": True
+        "weight": classWeights(DL_tr, C["nc"], device, use_mask=(C.get("label_type", "vertex") == "vertex")),
+        "use_weight": True,
+        "use_mask": C.get("use_mask", True)
     }
 elif C["weight_method"] == 'batch':
     opt_kw = {
         "weight": None,
-        "use_weight": True
+        "use_weight": True,
+        "use_mask": C.get("use_mask", True)
     }
 else:
     opt_kw = {
-        "use_weight": False
+        "use_weight": False,
+        "use_mask": C.get("use_mask", True)
     }
 
 # train
@@ -318,7 +349,9 @@ trainer.train(C["epochs"], DL_tr, DL_vl,
     best_state_metric_threshold=C["best_state_metric_threshold"],
     best_state_metric_dataset=C["best_state_metric_dataset"], 
     best_state_metric_goal=C["best_state_metric_goal"],
-    params_to_write=["module.crf1.log_alpha", "module.crf1.log_beta", "module.crf1.log_sigmasq"]
+    params_to_write=["module.crf1.log_alpha", "module.crf1.log_beta", "module.crf1.log_sigmasq"],
+    metrics_calculation=C.get("metrics_calculation", "average_batches"),
+    use_mask=C.get("use_mask", True)
 )
 
 # Write final training predictions to file

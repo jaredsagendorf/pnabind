@@ -9,18 +9,29 @@ from os.path import join as ospj
 from pickle import load
 
 # third party packages
-import torch
 import numpy as np
-from torch_geometric.transforms import Compose, FaceToEdge, PointPairFeatures, GenerateMeshNormals, Cartesian, TwoHop
+import torch
+import torch.nn as nn
+from torch_geometric.transforms import GenerateMeshNormals
 from torch_geometric.data import DataLoader
+from sklearn.metrics import roc_auc_score, balanced_accuracy_score, average_precision_score, precision_score, recall_score
 
 # geobind packages
-from geobind.nn.utils import loadDataset
-from geobind.nn.models import MultiBranchNet
-from geobind.nn import Evaluator
-from geobind.nn import processBatch
-from geobind.nn.metrics import auroc, auprc
-from geobind.nn.transforms import GeometricEdgeFeatures, ScaleEdgeFeatures
+from geobind.nn.utils import loadDataset, loadModule
+
+class NodeScaler(object):
+    def __init__(self):
+        self._data_arrays = []
+        self.scaler = StandardScaler()
+    
+    def update(self, array):
+        self._data_arrays.append(array)
+    
+    def fit(self):
+        self.scaler.fit(np.concatenate(self._data_arrays, axis=0))
+    
+    def scale(self, array):
+        return self.scaler.transform(array)
 
 #### Get command-line arguments
 arg_parser = argparse.ArgumentParser()
@@ -46,7 +57,7 @@ ARGS = arg_parser.parse_args()
 
 class EnsembleModel(object):
     def __init__(self, models, scalers, device, post='softmax'):
-        #super(EnsembleModel, self).__init__()
+        super(EnsembleModel, self).__init__()
         self.models = models
         self.M = len(models)
         self.means = []
@@ -72,36 +83,13 @@ class EnsembleModel(object):
         x = data.x
         for i in range(self.M):
             data.x = (x - self.means[i])/self.stds[i]
-            output = self.models[i](data)
+            output = self.models[i](data)[1]
             output = self.post(output)
             ys.append(output.cpu().numpy())
         
         ys = np.stack(ys, axis=-1) # [V x 2 x M]
         
         return ys
-
-def getDataTransforms(args):
-    t_lookup = {
-        "FaceToEdge": (FaceToEdge, lambda ob: 0),
-        "GenerateMeshNormals": (GenerateMeshNormals, lambda ob: 0),
-        "TwoHop": (TwoHop, lambda ob: 0),
-        "PointPairFeatures": (PointPairFeatures, lambda ob: 4),
-        "Cartesian": (Cartesian, lambda ob: 3),
-        "GeometricEdgeFeatures": (GeometricEdgeFeatures, lambda ob: ob.edge_dim),
-        "ScaleEdgeFeatures": (ScaleEdgeFeatures, lambda ob: 0)
-    }
-    transforms = []
-    edge_dim = 0
-    for arg in args:
-        t = t_lookup[arg["name"]][0](**arg.get("kwargs", {}))
-        edge_dim += t_lookup[arg["name"]][1](t)
-        
-        transforms.append(t)
-    
-    return Compose(transforms), edge_dim
-
-# if ARGS.log_file is None:
-    # logging.basicConfig(format='%(levelname)s:    %(message)s', level=logging.INFO)
 
 #### Load the config file
 with open(ARGS.config_file) as FH:
@@ -111,15 +99,12 @@ with open(ARGS.config_file) as FH:
 datafiles = [_.strip() for _ in open(ARGS.data_file).readlines()]
 datafiles = list(filter(lambda x: x[0] != '#', datafiles)) # remove commented lines
 
-trans_args = C["model"].get("transform_args", [])
-transform, edge_dim = getDataTransforms(trans_args)
-
-dataset, transforms, info = loadDataset(datafiles, C["nc"], "Y", ARGS.data_dir,
-    cache_dataset=False,
-    balance='unmasked',
-    remove_mask=False,
-    scale=False,
-    pre_transform=transform
+GMN = GenerateMeshNormals()
+dataset, transforms, info = loadDataset(datafiles, 2, 'Y', ARGS.data_dir,
+        cache_dataset=False,
+        scale=False,
+        pre_transform=GMN,
+        label_type="graph"
 )
 
 # wrap list of data object in a data loader
@@ -131,14 +116,13 @@ print("Finished loading dataset")
 nF = info['num_features']
 models = []
 scalers = []
-device = torch.device("cpu") # use cpu to ensure deterministic behaviour
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') # use cpu to ensure deterministic behaviour
 for i in range(len(ARGS.checkpoint_files)):
     cp = ARGS.checkpoint_files[i]
-    model = MultiBranchNet(nF, C['nc'], **C["model"]["kwargs"])
-    model = model.to(device)
-    
+    _, model = loadModule(C["MODEL"]["NAME"], C["MODEL"]["PATH"], (nF,) , C["MODEL"]["KWARGS"])
     checkpoint = torch.load(cp, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
+    model = model.to(device)
     models.append(model)
     scalers.append(load(open(ARGS.scalers[i], 'rb')))
 
@@ -146,48 +130,37 @@ ensemble = EnsembleModel(models, scalers, device)
 print("Created ensemble model")
 
 #### Loop over evaluation dataset
-ROC = []
-PRC = []
 Ys = []
 Ps = []
 with torch.no_grad():
     i = 0
     for batch in DL:
-        batch_data = processBatch(device, batch, xtras=["pos", "face"])
-        batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['mask']
-        output = ensemble.forward(batch) # this is a [V x 2 x M] numpy array of class probalities, output[i,j,k] ~ [0,1]
-        Ys.append(y)
+        batch = batch.to(device)
+        output = ensemble.forward(batch) # this is a [1 x 2 x M] numpy array of class probalities, output[i,j,k] ~ [0,1]
+        Ys.append(batch['y'].cpu().numpy())
         Ps.append(output)
         
         # get numpy arrays
-        y = y.cpu().numpy()
-        mask = mask.cpu().numpy()
-        V = batch_data['pos'].cpu().numpy()
-        F = batch_data['face'].cpu().numpy().T
+        y = batch['y'].cpu().numpy()
+        V = batch['pos'].cpu().numpy()
+        F = batch['face'].cpu().numpy().T
         
         # combine ensemble predictions
         Pm = output.mean(axis=-1)
         
         fname = datafiles[i].replace("_protein_data.npz", "")
         # get metrics
-        if not ARGS.no_metrics:
-            roc = auroc(y[mask], Pm[mask])
-            prc = auprc(y[mask], Pm[mask])
-            ROC.append(roc)
-            PRC.append(prc)
-            print("finished batch {} auprc: {:.3f} auroc {:.3f}".format(fname, prc, roc))
+        #if not ARGS.no_metrics:
+            #print("finished batch {} Y: {:d} Pr {:.3f}".format(fname, int(batch.y), float(Pm[0,1])))
         
         if ARGS.write_predictions:
             # write prediction to file
-            np.savez_compressed(ospj(ARGS.write_predictions, "{}_ensemble.npz".format(fname)), Y=y, Pm=Pm, Pe=output, V=V, F=F, mask=mask)
-        
+            np.savez_compressed(ospj(ARGS.write_predictions, "{}_ensemble.npz".format(fname)), Y=y, Pm=Pm, Pe=output, V=V, F=F)
         i += 1
 
-if not ARGS.no_metrics:
-    print("{:8s}{:8s}{:8s}".format("metric", "mean", "std"))
-    print("{:8s}{:8.3f}{:8.3f}".format("auroc", np.mean(ROC), np.std(ROC)))
-    print("{:8s}{:8.3f}{:8.3f}".format("auprc", np.mean(PRC), np.std(PRC)))
-
 Ys = np.concatenate(Ys, axis=0)
-Ps = np.concatenate(Ps, axis=0)
+Ps = np.concatenate(Ps, axis=0).mean(axis=-1)
+if not ARGS.no_metrics:
+    print("{:8s}{:8s}".format("AUROC", "AUPRC"))
+    print("{:8.3f}{:8.3f}".format(roc_auc_score(Ys, Ps[:,1]), average_precision_score(Ys, Ps[:,1])))
 np.savez_compressed("{}.npz".format(ARGS.suffix), Y=Ys, P=Ps)
