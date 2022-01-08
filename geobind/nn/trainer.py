@@ -85,7 +85,8 @@ class Trainer(object):
         validation_dataset=None, batch_loss_every=4, eval_every=2, debug=False,
         checkpoint_every=None, optimizer_kwargs={}, scheduler_kwargs={},
         best_state_metric=None, best_state_metric_threshold=None, 
-        best_state_metric_dataset='validation', best_state_metric_goal='max', params_to_write=None
+        best_state_metric_dataset='validation', best_state_metric_goal='max', params_to_write=None,
+        metrics_calculation="average_batches", use_mask=True
     ):
         # begin training
         if not self.quiet:
@@ -119,6 +120,7 @@ class Trainer(object):
                 batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['mask']
                 
                 # check for OOM errors
+                loss = self.optimizer_step(batch, y, mask, **optimizer_kwargs)
                 try:
                     loss = self.optimizer_step(batch, y, mask, **optimizer_kwargs)
                 except RuntimeError as e: # out of memory
@@ -162,11 +164,16 @@ class Trainer(object):
             # compute metrics
             if (epoch % eval_every == 0) and (self.evaluator is not None):
                 metrics = {}
-                metrics['train'] = self.evaluator.getMetrics(dataset, eval_mode=True, report_threshold=True, threshold=0.5, metrics_calculation="average_batches")
+                metrics['train'] = self.evaluator.getMetrics(dataset,
+                        eval_mode=True, report_threshold=True, threshold=0.5,
+                        metrics_calculation=metrics_calculation, use_mask=use_mask
+                )
                 metrics['train']['loss'] = epoch_loss/(n + 1e-5)
                 
                 if validation_dataset is not None:
-                    metrics['validation'] = self.evaluator.getMetrics(validation_dataset, eval_mode=True, threshold=0.5, metrics_calculation="average_batches")
+                    metrics['validation'] = self.evaluator.getMetrics(validation_dataset,
+                        eval_mode=True, threshold=0.5, metrics_calculation=metrics_calculation, use_mask=use_mask
+                    )
                 
                 # report performance
                 if not self.quiet:
