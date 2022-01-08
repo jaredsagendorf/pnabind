@@ -21,7 +21,18 @@ def createFormattedStrings(fields, values, widths=None, pad=2, alignment='<', fl
     
     return header_str, values_str, widths
 
-def reportMetrics(metrics_dict, label=None, label_width=None, sep_char=' | ', header=True, legend=True, header_sep=False, header_sep_char='-', **kwargs):
+def reportMetrics(metrics_dict, 
+        label=None,
+        label_key="label",
+        label_width=None,
+        sep_char=' | ',
+        header=True,
+        legend=True,
+        header_sep=False,
+        header_sep_char='-',
+        logger='',
+        **kwargs
+    ):
     header_strs = []
     values_strs = []
     tags = []
@@ -29,9 +40,9 @@ def reportMetrics(metrics_dict, label=None, label_width=None, sep_char=' | ', he
     if label is not None:
         tags.append("")
         if label_width is None:
-            l, v, w = createFormattedStrings([label[0]], [label[1]])
+            l, v, w = createFormattedStrings([label_key], [label])
         else:
-            l, v, w = createFormattedStrings([label[0]], [label[1]], [label_width])
+            l, v, w = createFormattedStrings([label_key], [label], [label_width])
         header_strs.append(l)
         values_strs.append(v)
         widths += w
@@ -51,13 +62,13 @@ def reportMetrics(metrics_dict, label=None, label_width=None, sep_char=' | ', he
         if legend:
             # legend string
             ls = sep_char.join(["{:^{width}s}".format(t, width=w) for t, w in zip(tags, widths)])
-            logging.info(ls)
+            logging.getLogger(logger).info(ls)
             
         # header string
         hs = sep_char.join(header_strs)
-        logging.info(hs)
+        logging.getLogger(logger).info(hs)
         if header_sep:
-            logging.info(header_sep_char*len(hs))
+            logging.getLogger(logger).info(header_sep_char*len(hs))
     
     fs = sep_char.join(values_strs)
-    logging.info(fs)
+    logging.getLogger(logger).info(fs)
