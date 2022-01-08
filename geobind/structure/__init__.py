@@ -15,6 +15,8 @@ from .map_point_features_to_structure import mapVertexProbabilitiesToStructure
 from .map_point_features_to_structure import mapPointFeaturesToStructure
 from .pairs_within_distance import pairsWithinDistance
 from .residue_distances import getResidueDistance
+from .split_entities import splitEntities
+from .strip_hydrogens import stripHydrogens
 
 __all__ = [
     "cleanProtein",
@@ -34,5 +36,7 @@ __all__ = [
     "mapVertexProbabilitiesToStructure",
     "mapPointFeaturesToStructure",
     "pairsWithinDistance",
-    "getResidueDistance"
+    "getResidueDistance",
+    "splitEntities",
+    "stripHydrogens"
 ]
