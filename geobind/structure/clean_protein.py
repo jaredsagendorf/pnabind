@@ -12,6 +12,7 @@ Bio.PDB.Atom.DisorderedAtom.copy=myCopy
 # built in modules
 import logging
 import os
+import re
 import subprocess
 
 # third party modules
@@ -49,7 +50,7 @@ class ResidueMutator(object):
             for model in structure:
                 self.candidates[resn].append(model[" "][2])
     
-    def mutate(self, residue):
+    def mutate(self, residue, replace_backbone=True):
         resn = residue.get_resname()
         
         if self.standard(resn):
@@ -95,7 +96,7 @@ class ResidueMutator(object):
             # perfom SVD fitting
             self.imposer.set(fixed_coord, moved_coord)
             self.imposer.run()
-            if(self.imposer.get_rms() < min_rms):
+            if self.imposer.get_rms() < min_rms:
                 min_rms = self.imposer.get_rms()
                 rotm, tran = self.imposer.get_rotran()
                 min_candidate = candidate
@@ -105,14 +106,15 @@ class ResidueMutator(object):
         candidate.transform(rotm, tran)
         stripHydrogens(candidate)
         
-        # replace backbone atoms of candidate
-        backbone_atoms = self.components[resn]['main_chain_atoms']
-        for atom in backbone_atoms:
-            if atom not in residue:
-                continue
-            if atom not in candidate:
-                candidate.add(residue[atom].copy())
-            candidate[atom].set_coord(residue[atom].get_coord())
+        if replace_backbone:
+            # replace backbone atoms of candidate
+            backbone_atoms = self.components[resn]['main_chain_atoms']
+            for atom in backbone_atoms:
+                if atom not in residue:
+                    continue
+                if atom not in candidate:
+                    candidate.add(residue[atom].copy())
+                candidate[atom].set_coord(residue[atom].get_coord())
         
         return candidate
     
@@ -141,9 +143,18 @@ def heavyAtomCount(residue):
             count += 1
     return count
 
-def cleanProtein(
-        structure, mutator=None, regexes=None, hydrogens=True, pdb2pqr=True,
-        replace_hydrogens=False, add_charge_radius=True, keepPQR=True, min_radius=0.6, quiet=False
+def cleanProtein(structure,
+        mutator=None,
+        regexes=None,
+        hydrogens=True,
+        pdb2pqr=True,
+        replace_hydrogens=False,
+        add_charge_radius=True,
+        keepPQR=True,
+        min_radius=0.6,
+        quiet=False,
+        remove_numerical_chain_id=False,
+        binding_site_ids=None
     ):
     """ Perform any operations needed to modify the structure or sequence of a protein
     chain.
@@ -154,6 +165,33 @@ def cleanProtein(
     if mutator is None:
         mutator = ResidueMutator(data.tripeptides, data.chem_components)
     
+    if remove_numerical_chain_id:
+        # APBS does not process numerical chain IDs correctly. This is a work-around
+        available_ids = list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+        
+        # find current chain ids
+        taken_ids = set()
+        for chain in structure.get_chains():
+            cid = chain.get_id()
+            taken_ids.add(cid)
+        
+        for chain in structure.get_chains():
+            cid = chain.get_id()
+            if cid.isnumeric():
+                # we want to replace this chain id
+                while len(available_ids) > 0:
+                    new_id = available_ids.pop()
+                    if new_id in taken_ids:
+                        continue
+                    else:
+                        break
+                chain.id = new_id
+                if binding_site_ids:
+                    # update chain ids in this list
+                    for i in range(len(binding_site_ids)):
+                        rid = binding_site_ids[i]
+                        binding_site_ids[i] = re.sub('^%s' % cid, new_id, rid)
+    
     # remove non-standard residues
     for chain in structure.get_chains():
         replace = []
@@ -161,11 +199,15 @@ def cleanProtein(
         for residue in chain:
             resn = residue.get_resname().strip()
             resid = residue.get_id()
-            if heavyAtomCount(residue)/(data.chem_components[resn]['heavy_atom_count']-1) < 0.5:
-                # too many missing atoms
+            if heavyAtomCount(residue)/(data.chem_components[resn]['heavy_atom_count']-1) < 0.6:
+                # too many missing atoms - replace residue
                 replace.append(resid)
             elif mutator.standard(resn):
-                continue
+                if resid[0] == ' ':
+                    continue
+                else:
+                    remove.append((resid, "removed HETATM standard residue: %s"))
+                    #residue.id = (' ', resid[1], resid[2])
             elif resn == 'HOH' or resn == 'WAT':
                 remove.append( (resid, None) )
             elif regexes["SOLVENT_COMPONENTS"].search(resn):
@@ -185,9 +227,9 @@ def cleanProtein(
             if replacement:
                 if not quiet:
                     logging.info("replacing residue %s with %s", chain[rid].get_resname(), replacement.get_resname())
-                chain.detach_child(rid)
                 replacement.id = rid
-                chain.add(replacement)
+                idx = chain.child_list.index(chain[rid])
+                chain.child_list[idx] = replacement
             else:
                 if not quiet:
                     logging.info("could not perform replacement on %s, removing", chain[rid].get_resname())
@@ -222,7 +264,7 @@ def cleanProtein(
         parser = PDBParser(PERMISSIVE=1, QUIET=True)
         if not os.path.exists(pqrFile):
             raise FileNotFoundError("No PQR file was produced ({}). Try manually running PDB2PQR on the pbdfile file '{}' and verify output.".format(pqrFile, pdbFile))
-        structure = parser.get_structure("repaired", pqrFile)
+        structure = parser.get_structure("prefix", pqrFile)
         model = structure[0]
         
         # Get radius and charge from PQR file
