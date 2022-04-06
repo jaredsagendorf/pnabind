@@ -187,10 +187,11 @@ def _processData(data_files, nc, labels_key,
             for data in data_list:
                 scaler.update(data.x[data.mask])
             scaler.fit()
+            scaler = scaler.scaler
         
         # scale node features in each data object
         for data in data_list:
-            data.x = torch.tensor(scaler.scale(data.x), dtype=torch.float32)
+            data.x = torch.tensor(scaler.transform(data.x), dtype=torch.float32)
     
     transforms = {
         "scaler": scaler,
