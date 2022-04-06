@@ -21,7 +21,7 @@ def padCoordinates(pqrFile):
     padded.close()
     shutil.move("tmp.pqr", pqrFile)
 
-def runAPBS(structure, prefix="tmp", basedir='.', quiet=True, pqr=None, clean=True, space=0.3, cfac=1.7, fadd=20):
+def runAPBS(structure, prefix="tmp", basedir='.', quiet=True, pqr=None, clean=True, space=0.3, cfac=1.7, fadd=20, keep_dx=False):
     """ run APBS and return potential """
     if pqr is None:
         tmp = os.path.join(basedir, "{}.pdb".format(prefix))
@@ -109,12 +109,19 @@ END""".format(
     logging.info("Running APBS on input file: %s", inFile)
     outpt = subprocess.check_output(["apbs", inFile], stderr=subprocess.STDOUT)
     
+    I1 = Interpolator("{}.dx".format(pot))
+    I2 = Interpolator("{}.dx".format(acc))
     # cleanup
-    if(clean):
+    if clean:
         if(os.path.exists(os.path.join(basedir, "{}.pdb".format(prefix)))):
             os.remove(os.path.join(basedir, "{}.pdb".format(prefix)))
         os.remove(inFile)
         if(os.access('io.mc', os.R_OK)):
             os.remove('io.mc')
     
-    return Interpolator("{}.dx".format(pot)), Interpolator("{}.dx".format(acc))
+    if not keep_dx:
+        # remove .dx files
+        os.remove("{}.dx".format(pot))
+        os.remove("{}.dx".format(acc))
+    
+    return I1, I2 
