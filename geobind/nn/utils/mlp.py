@@ -1,7 +1,7 @@
 from torch.nn import ReLU, ELU, Identity, Tanh, Dropout
 from torch.nn import Sequential as Seq, Linear as Lin, BatchNorm1d as BN
 
-def MLP(channels, batch_norm=True, act='relu', bn_kwargs={}, dropout=0.0, dropout_position="right"):
+def MLP(channels, batch_norm=True, act='relu', bn_kwargs={}, dropout=0.0, dropout_position="right", bias=True):
     
     if isinstance(act, str) or act is None:
         act = [act]*(len(channels)-1)
@@ -31,7 +31,7 @@ def MLP(channels, batch_norm=True, act='relu', bn_kwargs={}, dropout=0.0, dropou
             layers.append(Dropout(p=dropout[i-1]))
         
         layers.append(
-            Seq(Lin(channels[i-1], channels[i]), activation[i-1]())
+            Seq(Lin(channels[i-1], channels[i], bias=bias), activation[i-1]())
         )
         
         if batch_norm[i-1]:
