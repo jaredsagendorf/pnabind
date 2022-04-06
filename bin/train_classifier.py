@@ -125,6 +125,8 @@ console.setFormatter(formatter)
 logging.getLogger('').addHandler(console)
 
 # Load datasets
+feature_mask = C.get("FEATURE_MASK", None)
+print(feature_mask)
 train_datafiles = [_.strip() for _ in open(ARGS.train_file).readlines()]
 valid_datafiles = [_.strip() for _ in open(ARGS.test_file).readlines()]
 GMN = GenerateMeshNormals()
@@ -132,12 +134,14 @@ train_dataset, transforms, train_info = loadDataset(train_datafiles, 2, C["LABEL
         cache_dataset=False,
         scale=True,
         pre_transform=GMN,
-        label_type="graph"
+        label_type="graph",
+        feature_mask=feature_mask
 )
 valid_dataset, _, valid_info = loadDataset(valid_datafiles, 2, C["LABELS_KEY"], C["DATA_DIR"],
         cache_dataset=False,
         scale=True,
         label_type="graph",
+        feature_mask=feature_mask,
         **transforms
 )
 class_weight = getClassWeight(train_dataset)

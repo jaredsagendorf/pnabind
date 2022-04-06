@@ -42,7 +42,10 @@ class StructureData(object):
         self._atom_KDTree = None
         self._atom_list = None
         self._surface_residues = None
-        
+    
+    def __contains__(self, key):
+        return key in self.structure
+    
     def __getitem__(self, key):
         return self.structure[key]
     

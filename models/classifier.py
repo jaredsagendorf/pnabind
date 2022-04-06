@@ -11,7 +11,7 @@ from geobind.nn.utils import MLP
 
 class SAModule(torch.nn.Module):
     def __init__(self, nIn, nOut, ratio, radius, aggr="max",
-            max_neighbors=32, batch_norm=True, dropout=0.0
+            max_neighbors=32, batch_norm=True, dropout=0.0, bias=True
         ):
         super(SAModule, self).__init__()
         """This module acts as a pooling/conv layer. Taken from pytorch-geometric examples."""
@@ -22,11 +22,11 @@ class SAModule(torch.nn.Module):
         # set up convolution
         dim = nIn + 4
         if batch_norm:
-            nn1 = MLP([dim, dim, dim], batch_norm=True)
-            nn2 = MLP([dim, nOut], batch_norm=True)
+            nn1 = MLP([dim, dim, dim], batch_norm=True, bias=bias)
+            nn2 = MLP([dim, nOut], batch_norm=True, bias=bias)
         else:
-            nn1 = MLP([dim, dim, dim], batch_norm=False, dropout=[dropout, 0.0], dropout_position="left")
-            nn2 = MLP([dim, nOut], batch_norm=False)
+            nn1 = MLP([dim, dim, dim], batch_norm=False, dropout=[dropout, 0.0], dropout_position="left", bias=bias)
+            nn2 = MLP([dim, nOut], batch_norm=False, bias=bias)
         self.conv = PPFConv(nn1, nn2, add_self_loops=False)
         self.conv.aggr = aggr
     
@@ -47,7 +47,7 @@ class SAModule(torch.nn.Module):
         return x, pos, batch, idx
 
 class GlobalSAModule(torch.nn.Module):
-    def __init__(self, nIn, nOut, pool_args):
+    def __init__(self, nIn, nOut, pool_args, bias=True):
         super(GlobalSAModule, self).__init__()
         
         self.nIn = nIn
@@ -63,7 +63,7 @@ class GlobalSAModule(torch.nn.Module):
         elif pool_args["name"] == "topk_pool":
             self.pool = TopKPooling(nIn, ratio=pool_args["k"])
         elif pool_args["name"] == "global_attention_pool":
-            self.gate_nn = MLP([nIn, nIn, 1], batch_norm=False, dropout=pool_args["dropout"], dropout_position="left")
+            self.gate_nn = MLP([nIn, nIn, 1], batch_norm=False, dropout=pool_args["dropout"], dropout_position="left", bias=bias)
             self.nn = nn.Identity()
             self.pool = GlobalAttention(self.gate_nn, self.nn)
     
@@ -83,7 +83,8 @@ class Model(torch.nn.Module):
             name='pointnet_pp',
             dropout=0.0,
             aggr='max',
-            batch_norm=True
+            batch_norm=True,
+            bias=True
         ):
         super(Model, self).__init__()
         
@@ -95,12 +96,12 @@ class Model(torch.nn.Module):
         ### Model Layers ###
         # linear input
         if batch_norm:
-            self.lin_in = MLP([nIn, nhidden, nhidden], batch_norm=True)
+            self.lin_in = MLP([nIn, nhidden, nhidden], batch_norm=True, bias=bias)
         else:
-            self.lin_in = MLP([nIn, nhidden, nhidden], batch_norm=False, dropout=dropout)
+            self.lin_in = MLP([nIn, nhidden, nhidden], batch_norm=False, dropout=dropout, bias=bias)
         
         # pooling layers
-        self.GP_module = GlobalSAModule(nhidden, nhidden, pool_args)
+        self.GP_module = GlobalSAModule(nhidden, nhidden, pool_args, bias=bias)
         self.SA_modules = torch.nn.ModuleList()
         for i in range(depth):
             self.SA_modules.append(
@@ -112,7 +113,8 @@ class Model(torch.nn.Module):
                     max_neighbors=max_neighbors,
                     aggr=aggr,
                     batch_norm=batch_norm,
-                    dropout=dropout
+                    dropout=dropout,
+                    bias=bias
                 )
             )
         
@@ -121,13 +123,15 @@ class Model(torch.nn.Module):
             self.lin_out = MLP(
                 [nhidden, nhidden, nout],
                 batch_norm=[True, False],
-                act=['relu', None]
+                act=['relu', None],
+                bias=bias
             )
         else:
             self.lin_out = MLP(
                 [nhidden, nhidden, nout],
                 dropout=[dropout, 0.0],
-                act=['relu', None]
+                act=['relu', None],
+                bias=bias
             )
         self.nout = nout
     

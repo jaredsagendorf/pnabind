@@ -178,7 +178,8 @@ class Trainer(object):
                 # report performance
                 if not self.quiet:
                     reportMetrics(metrics,
-                        label=('Epoch', epoch),
+                        label=epoch,
+                        label_key='Epoch',
                         header=first_epoch
                     )
                 self.updateHistory(metrics, epoch)

@@ -5,10 +5,11 @@ import torch.nn.functional as F
 from torch_geometric.nn import radius, fps, knn_interpolate
 from torch_geometric.nn import PointConv, PPFConv, GraphConv
 from torch_geometric.nn import PairNorm, InstanceNorm, BatchNorm
+from torch_geometric.nn import global_max_pool, global_mean_pool, GlobalAttention, TopKPooling, knn_graph
 from torch_geometric.utils import dropout_adj
 
 # geobind modules
-from geobind.nn.layers import ContinuousCRF
+from geobind.nn.layers import ContinuousCRF, PPHConv
 from geobind.nn.utils import MLP
 
 class SAModule(torch.nn.Module):
@@ -52,6 +53,16 @@ class SAModule(torch.nn.Module):
             nn2 = MLP([dim, nOut], batch_norm=batch_norm)
             self.conv = PPFConv(nn1, nn2, add_self_loops=False)
             self.conv.aggr = conv_args.get('aggr', 'max')
+        elif conv_args['name'] == 'PPHConv':
+            dim = nIn + 4
+            nbins = conv_args.get('num_bins', 8)
+            nn1 = MLP([dim, dim, dim], batch_norm=batch_norm)
+            nn2 = MLP([dim*nbins, nOut, nOut], batch_norm=batch_norm)
+            self.conv = PPHConv(nn1, nn2, 
+                num_bins=nbins,
+                add_self_loops=False,
+                normalize=conv_args.get("normalize", False)
+            )
         
     def forward(self, x, pos, batch, norm=None):
         # pool points based on FPS algorithm, returning Npt*ratio centroids
@@ -80,7 +91,7 @@ class SAModule(torch.nn.Module):
                 num_nodes=num_nodes
             )
             x = self.conv(x, edge_index)[idx]
-        elif self.conv_name == 'PPFConv':
+        elif self.conv_name in ('PPFConv', 'PPHConv'):
             row = idx[row]
             edge_index, _ = dropout_adj(
                 torch.stack([col, row], dim=0),
@@ -119,9 +130,34 @@ class FPModule(torch.nn.Module):
         
         return x, pos_skip, batch_skip
 
+class GlobalSAModule(torch.nn.Module):
+    def __init__(self, nIn, nOut, pool_args):
+        super(GlobalSAModule, self).__init__()
+        
+        self.nIn = nIn
+        self.nOut = nOut
+        self.pool_type = pool_args["name"]
+        
+        if pool_args["name"] == "global_mean_pool":
+            self.pool = global_mean_pool
+        elif pool_args["name"] == "global_max_pool":
+            self.pool = global_max_pool
+        elif pool_args["name"] == "topk_pool":
+            self.pool = TopKPooling(nIn, ratio=pool_args["k"])
+        elif pool_args["name"] == "global_attention_pool":
+            self.gate_nn = MLP([nIn, nIn, 1], batch_norm=pool_args["batch_norm"])
+            self.nn = MLP([nIn, nIn, nOut], batch_norm=pool_args["batch_norm"])
+            self.pool = GlobalAttention(self.gate_nn, self.nn)
+        
+    def forward(self, x, pos, batch, edge_index=None):
+        x = self.pool(x, batch)
+        
+        return x
+
 class PointNetPP(torch.nn.Module):
     def __init__(self, nIn, nOut=None, 
             conv_args=None,
+            pool_args=None,
             crf_kwargs={},
             depth=3,
             nhidden=16,
@@ -136,7 +172,8 @@ class PointNetPP(torch.nn.Module):
             graph_norm=False,
             graph_norm_kwargs={},
             v_dropout=0.0,
-            e_dropout=0.0
+            e_dropout=0.0,
+            mode="segmentation"
         ):
         super(PointNetPP, self).__init__()
         
@@ -148,6 +185,7 @@ class PointNetPP(torch.nn.Module):
         self.use_crf = use_crf
         self.v_dropout = v_dropout
         self.e_dropout = e_dropout
+        self.mode = mode
         
         if ratios is None:
             ratios = [0.5]*depth
@@ -163,7 +201,10 @@ class PointNetPP(torch.nn.Module):
         
         # pooling/unpooling layers
         self.SA_modules = torch.nn.ModuleList()
-        self.FP_modules = torch.nn.ModuleList()
+        if self.mode == "classification":
+            self.GP_module = GlobalSAModule(nhidden, nhidden, pool_args)
+        else:
+            self.FP_modules = torch.nn.ModuleList()
         for i in range(depth):
             self.SA_modules.append(
                 SAModule(
@@ -180,16 +221,20 @@ class PointNetPP(torch.nn.Module):
                     graph_norm_kwargs=graph_norm_kwargs
                 )
             )
-            self.FP_modules.append(
-                FPModule(
-                    nhidden,
-                    nhidden,
-                    nhidden,
-                    k=knn_num,
-                    batch_norm=batch_norm
+            if self.mode == "segmentation":
+                self.FP_modules.append(
+                    FPModule(
+                        nhidden,
+                        nhidden,
+                        nhidden,
+                        k=knn_num,
+                        batch_norm=batch_norm
+                    )
                 )
-            )
-        self.nout = nhidden
+        if self.mode == "classification":
+            self.nout = nhidden
+        else:
+            self.nout = nhidden
         
         # linear layers
         if use_lin:
@@ -197,7 +242,7 @@ class PointNetPP(torch.nn.Module):
                     [nhidden, nhidden, nOut],
                     batch_norm=[batch_norm, False],
                     act=['relu', None],
-                    dropout=[dropout, 0.0]
+                    dropout=[v_dropout, 0.0]
             )
             self.nout = nOut
         
@@ -213,7 +258,7 @@ class PointNetPP(torch.nn.Module):
         norm = data.norm
         sa_outs = [(x, data.pos, data.batch)]
         for i in range(self.depth):
-            if self.conv_name == 'PPFConv':
+            if self.conv_name in ('PPFConv', 'PPHConv'):
                 args = (*sa_outs[i], norm)
             else:
                 args = sa_outs[i]
@@ -221,12 +266,16 @@ class PointNetPP(torch.nn.Module):
             sa_outs.append((x, pos, batch))
             norm = norm[idx]
         
-        # unpooling
-        fp_out = self.FP_modules[-1].forward(*sa_outs[-1], *sa_outs[-2])
-        for i in range(1, self.depth):
-            j = - i
-            fp_out = self.FP_modules[j-1].forward(*fp_out, *sa_outs[j-2])
-        x = fp_out[0]
+        if self.mode == "segmentation":
+            # unpooling
+            fp_out = self.FP_modules[-1].forward(*sa_outs[-1], *sa_outs[-2])
+            for i in range(1, self.depth):
+                j = - i
+                fp_out = self.FP_modules[j-1].forward(*fp_out, *sa_outs[j-2])
+            x = fp_out[0]
+        else:
+            # global pooling
+            x = self.GP_module(*sa_outs[-1])
         
         # lin 2-4
         if self.use_lin:
