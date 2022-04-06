@@ -55,7 +55,8 @@ class Evaluator(object):
                     'precision': {'average': 'binary', 'zero_division': 0},
                     'recall': {'average': 'binary', 'zero_division': 0},
                     'accuracy': {},
-                    'specificity': {}
+                    'specificity': {},
+                    'matthews_corrcoef': {}
                 }
                 metrics_check = {
                     'auroc': lambda n: (n[0] > 0) and (n[1] > 0),
@@ -65,7 +66,8 @@ class Evaluator(object):
                     'precision': lambda n: (n[0] > 0) and (n[1] > 0),
                     'recall': lambda n: (n[1] > 0),
                     'accuracy': lambda n: True,
-                    'specificity': lambda n: (n[0] > 0)
+                    'specificity': lambda n: (n[0] > 0),
+                    'matthews_corrcoef': True
                 }
             elif nc > 2:
                 # three or more classes 
