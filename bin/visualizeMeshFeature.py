@@ -15,6 +15,12 @@ PARSER.add_argument("--point_cloud", action='store_true',
         help="Render Point Clouds")
 PARSER.add_argument("--save_scene", action='store_true', default=False,
         help="Save each rendered scene to file as .ply")
+PARSER.add_argument("--vmin", type=float, default=None,
+        help="Min value for color scale.")
+PARSER.add_argument("--vmax", type=float, default=None,
+        help="Max value for color scale.")
+PARSER.add_argument("--ptp_threshold", type=float, default=None,
+        help="Minimum variation for applying color map.")
 ARGS = PARSER.parse_args()
 
 # builtin modules
@@ -24,6 +30,7 @@ import re
 # third party modules
 import numpy as np
 import trimesh
+from matplotlib.pyplot import get_cmap
 
 # binary label colors
 binary_colors = np.array([
@@ -33,7 +40,6 @@ binary_colors = np.array([
     [1.00, 0.00, 0.00], #  2: false positives
     [0.73, 0.33, 0.83], #  3: false negatives
 ])
-
 
 # binary label colors
 multiclass_colors = np.array([
@@ -48,7 +54,7 @@ multiclass_colors = np.array([
     [1.00, 0.00, 0.00] # 7: red (false prediction)
 ])
 
-def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, save=True, max_width=4, shift_axis='x', normalize=True, scene_name="scene", **kwargs):
+def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_map=None, save=True, max_width=4, shift_axis='x', vmin=None, vmax=None, ptp_threshold=0, scene_name="scene", **kwargs):
     # figure out where to get color information
     if data is None and colors is None:
         # just visualize the mesh geometry
@@ -60,12 +66,21 @@ def visualizeMesh(mesh, data=None, colors=None, color_map='seismic', int_color_m
             if data[i].dtype == np.int64 or data[i].dtype == bool:
                 vertex_colors.append(trimesh.visual.to_rgba(int_color_map[data[i]+1]))
             else:
-                if normalize:
-                    data[i] = (data[i] - data[i].min())/(data[i].max() - data[i].min())
-                if np.ptp(data) == 0:
-                    vertex_colors = trimesh.visual.to_rgba([0.8, 0.8, 0.8])
+                if np.ptp(data[i]) <= ptp_threshold:
+                    vertex_colors.append(trimesh.visual.to_rgba([0.8, 0.8, 0.8]))
                 else:
-                    vertex_colors.append(trimesh.visual.interpolate(data[i], color_map=color_map))
+                    cmap = get_cmap(color_map)
+                    vmin = vmin if (vmin is not None) else data[i].min()
+                    vmax = vmax if (vmax is not None) else data[i].max()
+                    
+                    # scale values to 0.0 - 1.0 and get colors
+                    colors = cmap(
+                        np.clip((data[i] - vmin)/(vmax - vmin), 0.0, 1.0)
+                    )
+                    rgba = trimesh.visual.to_rgba(colors, dtype=np.uint8)
+                    
+                    #vertex_colors.append(trimesh.visual.interpolate(data[i], color_map=color_map))
+                    vertex_colors.append(rgba)
     else:
         # use the given colors
         if isinstance(colors, list):
@@ -192,7 +207,7 @@ while True:
         t = float(inp[1:].strip())
         arrays = getDataArrays(['P1'])
         Y = (arrays[0] >= t).astype(int)
-        visualizeMesh(mesh, [Y], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors, save=ARGS.save_scene)
+        visualizeMesh(mesh, [Y], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors, save=ARGS.save_scene, vmin=ARGS.vmin, vmax=ARGS.vmax, ptp_threshold=ARGS.ptp_threshold)
     elif(INP == 'm'):
         visualizeMesh(mesh)
     elif(inp[0] == 'c'):
@@ -205,7 +220,7 @@ while True:
             P = arrays[1]
             ind = (D != P)
             D[ind] = 7
-            visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors, save=ARGS.save_scene)
+            visualizeMesh(mesh, [D], color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors, save=ARGS.save_scene, vmin=ARGS.vmin, vmax=ARGS.vmax, ptp_threshold=ARGS.ptp_threshold)
         else:
             D = arrays[0]
             P = arrays[1]
@@ -220,6 +235,6 @@ while True:
         
         scene_name = "_".join(INP)
         if ARGS.multiclass_labels:
-            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors, save=ARGS.save_scene, scene_name=scene_name)
+            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=multiclass_colors, save=ARGS.save_scene, scene_name=scene_name, vmin=ARGS.vmin, vmax=ARGS.vmax, ptp_threshold=ARGS.ptp_threshold)
         else:
-            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors, save=ARGS.save_scene, scene_name=scene_name)
+            visualizeMesh(mesh, arrays, color_map=ARGS.color_map, smooth=ARGS.smooth, int_color_map=binary_colors, save=ARGS.save_scene, scene_name=scene_name, vmin=ARGS.vmin, vmax=ARGS.vmax, ptp_threshold=ARGS.ptp_threshold)
