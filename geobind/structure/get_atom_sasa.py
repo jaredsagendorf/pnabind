@@ -91,12 +91,12 @@ def getFreeSASAStructureFromModel(structure, classifier=None):
     
     return freesasa_structure
     
-def getAtomSASA(structure, classifier=None, probe_radius=1.4, mi=0, **kwargs):
+def getAtomSASA(structure, classifier=None, probe_radius=1.4, mi=0, feature_name="sasa", **kwargs):
     
-    if(classifier is None):
+    if classifier is None:
         # initialize new classifier
         classifier = Radius(**kwargs)
-        
+    
     freesasa_structure = getFreeSASAStructureFromModel(structure, classifier=classifier)
     SASA = freesasa.calc(freesasa_structure, freesasa.Parameters({"probe-radius": probe_radius}))
     
@@ -112,4 +112,6 @@ def getAtomSASA(structure, classifier=None, probe_radius=1.4, mi=0, **kwargs):
             ins = resi[-1]
             resi = resi[:-1]
         aname = structure.atomName(i).strip()
-        structure[mi][cid][(' ', int(resi), ins)][aname].xtra["sasa"] = sasa
+        structure[mi][cid][(' ', int(resi), ins)][aname].xtra[feature_name] = sasa
+    
+    return feature_name
