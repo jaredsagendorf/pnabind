@@ -17,6 +17,7 @@ from .pairs_within_distance import pairsWithinDistance
 from .residue_distances import getResidueDistance
 from .split_entities import splitEntities
 from .strip_hydrogens import stripHydrogens
+from .run_pdb2pqr import runPDB2PQR
 
 __all__ = [
     "cleanProtein",
@@ -38,5 +39,6 @@ __all__ = [
     "pairsWithinDistance",
     "getResidueDistance",
     "splitEntities",
-    "stripHydrogens"
+    "stripHydrogens",
+    "runPDB2PQR"
 ]
