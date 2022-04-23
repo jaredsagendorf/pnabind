@@ -14,6 +14,8 @@ import logging
 import os
 import re
 import subprocess
+import random
+import string
 
 # third party modules
 import numpy as np
@@ -143,6 +145,9 @@ def heavyAtomCount(residue):
             count += 1
     return count
 
+def tempFileName(prefix, ext):
+    return "%s.%s" % (prefix + ''.join(random.choice(string.ascii_letters) for i in range(15)), ext)
+
 def cleanProtein(structure,
         mutator=None,
         regexes=None,
@@ -154,16 +159,13 @@ def cleanProtein(structure,
         min_radius=0.6,
         quiet=False,
         remove_numerical_chain_id=False,
-        binding_site_ids=None
+        binding_site_ids=None,
+        method="geobind"
     ):
     """ Perform any operations needed to modify the structure or sequence of a protein
     chain.
     """
-    # set up needed objects
-    if regexes is None:
-        regexes = data.regexes
-    if mutator is None:
-        mutator = ResidueMutator(data.tripeptides, data.chem_components)
+    prefix = structure.name # used for file names
     
     if remove_numerical_chain_id:
         # APBS does not process numerical chain IDs correctly. This is a work-around
@@ -175,6 +177,7 @@ def cleanProtein(structure,
             cid = chain.get_id()
             taken_ids.add(cid)
         
+        # iterate over chains and update
         for chain in structure.get_chains():
             cid = chain.get_id()
             if cid.isnumeric():
@@ -192,48 +195,83 @@ def cleanProtein(structure,
                         rid = binding_site_ids[i]
                         binding_site_ids[i] = re.sub('^%s' % cid, new_id, rid)
     
-    # remove non-standard residues
-    for chain in structure.get_chains():
-        replace = []
-        remove = []
-        for residue in chain:
-            resn = residue.get_resname().strip()
-            resid = residue.get_id()
-            if heavyAtomCount(residue)/(data.chem_components[resn]['heavy_atom_count']-1) < 0.6:
-                # too many missing atoms - replace residue
-                replace.append(resid)
-            elif mutator.standard(resn):
-                if resid[0] == ' ':
+    if method == "geobind":
+        # set up needed objects
+        if regexes is None:
+            regexes = data.regexes
+        if mutator is None:
+            mutator = ResidueMutator(data.tripeptides, data.chem_components)
+        
+        # remove non-standard residues
+        for chain in structure.get_chains():
+            replace = []
+            remove = []
+            for residue in chain:
+                resn = residue.get_resname().strip()
+                resid = residue.get_id()
+                if heavyAtomCount(residue)/(data.chem_components[resn]['heavy_atom_count']-1) < 0.6:
+                    # too many missing atoms - replace residue
+                    replace.append(resid)
+                elif mutator.standard(resn):
+                    if resid[0] == ' ':
+                        continue
+                    else:
+                        remove.append((resid, "removed HETATM standard residue: %s"))
+                elif resn == 'HOH' or resn == 'WAT':
+                    remove.append( (resid, None) )
+                elif regexes["SOLVENT_COMPONENTS"].search(resn):
                     continue
+                elif mutator.modified(resn):
+                    replace.append(resid)
                 else:
-                    remove.append((resid, "removed HETATM standard residue: %s"))
-                    #residue.id = (' ', resid[1], resid[2])
-            elif resn == 'HOH' or resn == 'WAT':
-                remove.append( (resid, None) )
-            elif regexes["SOLVENT_COMPONENTS"].search(resn):
-                continue
-            elif mutator.modified(resn):
-                replace.append(resid)
-            else:
-                remove.append( (resid, "removed unrecognized residue: %s") )
-        
-        for rid, reason in remove:
-            if reason is not None and not quiet:
-                logging.info(reason, chain[rid].get_resname())
-            chain.detach_child(rid)
-        
-        for rid in replace:
-            replacement = mutator.mutate(chain[rid])
-            if replacement:
-                if not quiet:
-                    logging.info("replacing residue %s with %s", chain[rid].get_resname(), replacement.get_resname())
-                replacement.id = rid
-                idx = chain.child_list.index(chain[rid])
-                chain.child_list[idx] = replacement
-            else:
-                if not quiet:
-                    logging.info("could not perform replacement on %s, removing", chain[rid].get_resname())
+                    remove.append( (resid, "removed unrecognized residue: %s") )
+            
+            for rid, reason in remove:
+                if reason is not None and not quiet:
+                    logging.info(reason, chain[rid].get_resname())
                 chain.detach_child(rid)
+            
+            for rid in replace:
+                replacement = mutator.mutate(chain[rid])
+                if replacement:
+                    if not quiet:
+                        logging.info("replacing residue %s with %s", chain[rid].get_resname(), replacement.get_resname())
+                    replacement.id = rid
+                    idx = chain.child_list.index(chain[rid])
+                    chain.child_list[idx] = replacement
+                else:
+                    if not quiet:
+                        logging.info("could not perform replacement on %s, removing", chain[rid].get_resname())
+                    chain.detach_child(rid)
+    elif method == "pdbfixer":
+        try:
+            from pdbfixer import PDBFixer
+            from openmm.app import PDBFile
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError("The dependencies 'pdbfixer' and 'openmm' are required with option 'method=\"pdbfixer\"'")
+        
+        # create a temp file
+        tmpFile1 = tempFileName(prefix, 'pdb')
+        structure.save(tmpFile1)
+        
+        # run pdbfixer
+        fixer = PDBFixer(filename=tmpFile1)
+        fixer.findMissingResidues()
+        fixer.findNonstandardResidues()
+        fixer.replaceNonstandardResidues()
+        fixer.removeHeterogens(False)
+        fixer.findMissingAtoms()
+        fixer.addMissingAtoms()
+        
+        tmpFile2 = tempFileName(prefix, 'pdb')
+        PDBFile.writeFile(fixer.topology, fixer.positions, open(tmpFile2, 'w'))
+        
+        # load new fixed structure
+        structure = StructureData(tmpFile2, name=prefix)
+        
+        # clean up
+        os.remove(tmpFile1)
+        os.remove(tmpFile2)
     
     # run PDB2PQR if requested
     if pdb2pqr:
@@ -241,19 +279,18 @@ def cleanProtein(structure,
             # strip any existing hydrogens - add new ones with PDB2PQR
             stripHydrogens(structure)
         
-        prefix = structure.name
         # Write chain to temp file
-        pdbFile = "{}_temp.pdb".format(prefix)
+        tmpFile = tempFileName(prefix, 'pdb')
         pqrFile = "{}.pqr".format(prefix)
-        structure.save(pdbFile)
+        structure.save(tmpFile)
         
         # Run PDB2PQR
         FNULL = open(os.devnull, 'w')
         subprocess.call([
                 'pdb2pqr',
-                '--ff=amber',
-                '--chain',
-                pdbFile,
+                '--ff=AMBER',
+                '--keep-chain',
+                tmpFile,
                 pqrFile
             ],
             stdout=FNULL,
@@ -263,8 +300,8 @@ def cleanProtein(structure,
         
         parser = PDBParser(PERMISSIVE=1, QUIET=True)
         if not os.path.exists(pqrFile):
-            raise FileNotFoundError("No PQR file was produced ({}). Try manually running PDB2PQR on the pbdfile file '{}' and verify output.".format(pqrFile, pdbFile))
-        structure = parser.get_structure("prefix", pqrFile)
+            raise FileNotFoundError("No PQR file was produced ({}). Try manually running PDB2PQR on the pbdfile file '{}' and verify output.".format(pqrFile, tmpFile))
+        structure = parser.get_structure(prefix, pqrFile)
         model = structure[0]
         
         # Get radius and charge from PQR file
@@ -287,12 +324,12 @@ def cleanProtein(structure,
         structure = StructureData(model, name=prefix)
             
         # clean up
-        os.remove(pdbFile)
+        os.remove(tmpFile)
         if not keepPQR:
             os.remove(pqrFile)
     
     # remove hydrogens if requested
-    if(not hydrogens):
+    if not hydrogens:
         stripHydrogens(structure)
     
     # decide what to return
