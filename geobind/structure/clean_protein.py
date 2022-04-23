@@ -14,20 +14,22 @@ import logging
 import os
 import re
 import subprocess
-import random
-import string
+from random import choice
+from string import ascii_letters
 
 # third party modules
 import numpy as np
 from Bio.PDB import PDBParser
-from Bio.SVDSuperimposer import SVDSuperimposer
 
 # geobind modules
 from .strip_hydrogens import stripHydrogens
 from .data import data
 from .structure import StructureData
+from .run_pdb2pqr import runPDB2PQR
 
 class ResidueMutator(object):
+    from Bio.SVDSuperimposer import SVDSuperimposer
+    
     def __init__(self, tripeptides=None, components=None, standard_residues=None):
         """ The mutator object takes a non-standard residue or incomplete residue and modifies it
         """
@@ -41,7 +43,7 @@ class ResidueMutator(object):
         self.components = components
         self.candidates = {}
         self.standard_residues = standard_residues
-        self.imposer = SVDSuperimposer()
+        self.imposer = self.SVDSuperimposer()
         self.parser = PDBParser(PERMISSIVE=1,QUIET=True)
         
         # build up candidate structures
@@ -146,21 +148,18 @@ def heavyAtomCount(residue):
     return count
 
 def tempFileName(prefix, ext):
-    return "%s.%s" % (prefix + ''.join(random.choice(string.ascii_letters) for i in range(15)), ext)
+    return "%s.%s" % (prefix + ''.join(choice(ascii_letters) for i in range(15)), ext)
 
 def cleanProtein(structure,
         mutator=None,
         regexes=None,
         hydrogens=True,
-        pdb2pqr=True,
-        replace_hydrogens=False,
-        add_charge_radius=True,
-        keepPQR=True,
-        min_radius=0.6,
+        run_pdb2pqr=True,
         quiet=False,
         remove_numerical_chain_id=False,
         binding_site_ids=None,
-        method="geobind"
+        method="geobind",
+        **kwargs
     ):
     """ Perform any operations needed to modify the structure or sequence of a protein
     chain.
@@ -209,7 +208,7 @@ def cleanProtein(structure,
             for residue in chain:
                 resn = residue.get_resname().strip()
                 resid = residue.get_id()
-                if heavyAtomCount(residue)/(data.chem_components[resn]['heavy_atom_count']-1) < 0.6:
+                if resn in data.chem_components and heavyAtomCount(residue)/(data.chem_components[resn]['heavy_atom_count']-1) < 0.6:
                     # too many missing atoms - replace residue
                     replace.append(resid)
                 elif mutator.standard(resn):
@@ -274,66 +273,15 @@ def cleanProtein(structure,
         os.remove(tmpFile2)
     
     # run PDB2PQR if requested
-    if pdb2pqr:
-        if replace_hydrogens:
-            # strip any existing hydrogens - add new ones with PDB2PQR
-            stripHydrogens(structure)
-        
-        # Write chain to temp file
-        tmpFile = tempFileName(prefix, 'pdb')
-        pqrFile = "{}.pqr".format(prefix)
-        structure.save(tmpFile)
-        
-        # Run PDB2PQR
-        FNULL = open(os.devnull, 'w')
-        subprocess.call([
-                'pdb2pqr',
-                '--ff=AMBER',
-                '--keep-chain',
-                tmpFile,
-                pqrFile
-            ],
-            stdout=FNULL,
-            stderr=FNULL
-        )
-        FNULL.close()
-        
-        parser = PDBParser(PERMISSIVE=1, QUIET=True)
-        if not os.path.exists(pqrFile):
-            raise FileNotFoundError("No PQR file was produced ({}). Try manually running PDB2PQR on the pbdfile file '{}' and verify output.".format(pqrFile, tmpFile))
-        structure = parser.get_structure(prefix, pqrFile)
-        model = structure[0]
-        
-        # Get radius and charge from PQR file
-        for line in open(pqrFile):
-            if(line[0:4] != "ATOM"):
-                continue
-            cid = line[21]
-            num = int(line[22:26].strip())
-            ins = line[26]
-            rid = (" ", num, ins)
-            crg = float(line[55:62].strip())
-            vdw = float(line[63:69].strip())
-            atm = line[12:16].strip()
-            if vdw == 0.0:
-                vdw = min_radius # 0 radius atoms causes issues - set to a minimum of 0.6
-            if rid in model[cid]:
-                if add_charge_radius and (atm in model[cid][rid]):
-                    model[cid][rid][atm].xtra["charge"] = crg 
-                    model[cid][rid][atm].xtra["radius"] = vdw
-        structure = StructureData(model, name=prefix)
-            
-        # clean up
-        os.remove(tmpFile)
-        if not keepPQR:
-            os.remove(pqrFile)
+    if run_pdb2pqr:
+        structure, pqrFile = runPDB2PQR(structure, **kwargs)
     
     # remove hydrogens if requested
     if not hydrogens:
         stripHydrogens(structure)
     
     # decide what to return
-    if pdb2pqr and keepPQR:
+    if run_pdb2pqr:
         return structure, pqrFile
     else:
         return structure
