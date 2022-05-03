@@ -1,7 +1,7 @@
 from .clean_protein import ResidueMutator, cleanProtein
 from .get_atom_charge_radius import getAtomChargeRadius
 from .get_atom_sesa import getAtomSESA
-from .get_atom_sasa import getAtomSASA
+from .get_atom_sasa import getAtomSASA, Radius
 from .get_dssp import getDSSP
 from .get_achtley_factors import getAchtleyFactors
 from .get_cv import getCV
@@ -18,6 +18,7 @@ from .residue_distances import getResidueDistance
 from .split_entities import splitEntities
 from .strip_hydrogens import stripHydrogens
 from .run_pdb2pqr import runPDB2PQR
+from .run_tabipb import runTABIPB
 
 __all__ = [
     "cleanProtein",
@@ -41,4 +42,6 @@ __all__ = [
     "splitEntities",
     "stripHydrogens",
     "runPDB2PQR"
+    "Radius",
+    "runTABIPB"
 ]

@@ -5,7 +5,7 @@ from .get_atom_kdtree import getAtomKDTree
 
 def getSAP(structure, distance=5.0, ns=None,
          bonds=None, residue_hydrophobicity=None, standard_area=None, side_chain_atoms=None,
-         area_key='sesa', hydrogens=False, feature_name='sap'
+         area_key='sesa', impute_hydrogens=False, feature_name='sap'
     ):
     # Reads in the file pdbid-protein.pdb and computes the SAP score for
     # all standard residues on the protein surface. Non-standard should 
@@ -42,7 +42,7 @@ def getSAP(structure, distance=5.0, ns=None,
     for chain in structure.get_chains():
         for residue in chain:
             for a in residue:
-                if not hydrogens and a.element == 'H':
+                if impute_hydrogens and a.element == 'H':
                     continue
                 if a.xtra[area_key] <= 0.0:
                     a.xtra[feature_name] = 0.0
@@ -51,7 +51,7 @@ def getSAP(structure, distance=5.0, ns=None,
                 sap = 0.0
                 neighbors = ns.search(center, distance, level='A')
                 for n in neighbors:
-                    if not hydrogens and n.element == 'H':
+                    if impute_hydrogens and n.element == 'H':
                         continue
                     if n.xtra[area_key] <= 0.0:
                         continue
@@ -66,17 +66,17 @@ def getSAP(structure, distance=5.0, ns=None,
                             sap += residue_hydrophobicity[nresn]*min(1.5, n.xtra[area_key]/standard_area[nresn][nname])
                 a.xtra[feature_name] = sap
     
-    # use parent atom as hydrogen SAP value if we exluded them
-    if not hydrogens:
+    if impute_hydrogens:
+        # use parent atom as hydrogen SAP value if we exluded them
         for chain in structure.get_chains():
             for residue in chain:
                 resn = residue.get_resname().strip()
                 for a in residue:
-                    if(a.element != 'H'):
+                    if a.element != 'H':
                         continue
                     aname = a.get_name().strip()
                     parent_atom = bonds[resn][aname]['bonded_atoms'][0]
                     if parent_atom in residue:
                         a.xtra[feature_name] = residue[parent_atom].xtra[feature_name]
     
-    return [feature_name]
+    return feature_name

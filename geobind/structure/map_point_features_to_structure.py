@@ -75,9 +75,6 @@ def mapVertexProbabilitiesToStructure(vertices, atom_list, P, nc, level='A', kdt
     for atom in atom_list:
         if atom.xtra['v_weight'] > 0:
             atom.xtra['p'] = atom.xtra['p']/atom.xtra['v_weight']
-        ###debug
-        #if atom.xtra['p'][1] > atom.xtra['p'][0]:
-        #    print(atom.xtra['p'])
     
     # return list of entities with aggregated probabilities
     if level == 'A':
@@ -100,8 +97,5 @@ def mapVertexProbabilitiesToStructure(vertices, atom_list, P, nc, level='A', kdt
                 residue_dict[residue_id] = np.mean(residue_dict[residue_id], axis=0)
             elif reduce_method == 'max':
                 residue_dict[residue_id] = np.max(residue_dict[residue_id], axis=0)
-            ##debug
-            #if residue_dict[residue_id][1] > residue_dict[residue_id][0]:
-            #    print(residue_dict[residue_id])
         
         return residue_dict

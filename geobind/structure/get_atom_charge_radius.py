@@ -2,14 +2,10 @@
 import subprocess
 import os
 
-# third party modules
-from Bio.PDB import PDBParser
-
 # geobind modules
 from .strip_hydrogens import stripHydrogens
 from .structure import StructureData
 from .data import data
-from. get_atom_sasa import Radius
 
 def getAtomChargeRadius(structure, prefix='structure', hydrogens=True, keepPQR=False, source="AMBER", min_radius=0.6):
     """ Assign atomic parameters to every atom in a protein chain. Values are stored in atom.xtra 
@@ -91,6 +87,7 @@ def getAtomChargeRadius(structure, prefix='structure', hydrogens=True, keepPQR=F
             atom.xtra["charge"] = data.AMBER[resn][atmn]["charge"]
     elif source == "freesasa":
         # assign radius only
+        from. get_atom_sasa import Radius
         R = Radius()
         
         for atom in structure.get_atoms():

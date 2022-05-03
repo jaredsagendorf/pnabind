@@ -1,6 +1,8 @@
-from Bio.PDB.DSSP import DSSP
-
 def getDSSP(model, PDBFileName, dssp_map=None, feature_name='secondary_structure', formatstr="{}({})"):
+    try:
+        from Bio.PDB.DSSP import DSSP
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("The module 'Bio.PDB.DSSP' is required for this functionality!")
     
     if dssp_map is None:
         # map eight ss types to three

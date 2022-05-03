@@ -1,7 +1,5 @@
 import numpy as np
 
-from .pipelines import DefaultPipeline as Pipeline
-
 """
 Compute the Zernike moments of a collection of points.
 
@@ -14,7 +12,6 @@ Authors:
 Copyright 2013,  Mindboggle team (http://mindboggle.info), Apache v2.0 License
 
 """
-
 
 def meshZernikeMoments(points, faces, order=10, scale_input=True):
     """
@@ -102,6 +99,7 @@ def meshZernikeMoments(points, faces, order=10, scale_input=True):
     >>> plot_surfaces(vtk_file) # doctest: +SKIP
 
     """
+    from .pipelines import DefaultPipeline as Pipeline
     
     # ------------------------------------------------------------------------
     # Translate all points so that they are centered at their mean,

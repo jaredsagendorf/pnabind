@@ -1,8 +1,5 @@
 # third party packages
 import numpy as np
-import trimesh
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import scale
 
 def getVectorAngle(v1, v2):
     return np.arctan2(np.linalg.norm(np.cross(v1, v2, axis=1), axis=1), (v1 * v2).sum(axis=1))
@@ -28,7 +25,6 @@ def getPPFeatures(mesh, edge_index, edge_attr=None):
     return features
 
 def getGeometricEdgeFeatures(mesh, directed_edges=True, pp_features=True, triangle_features=True, n_components=0, normalize=True):
-
     assert np.all(mesh.edges_unique == mesh.face_adjacency_edges)
     
     edge_attr = []
@@ -68,9 +64,11 @@ def getGeometricEdgeFeatures(mesh, directed_edges=True, pp_features=True, triang
             edge_attr = getPPFeatures(mesh, edge_index, edge_attr)
     
     if normalize:
+        from sklearn.preprocessing import scale
         edge_attr = scale(edge_attr)
     
     if n_components > 0:
+        from sklearn.decomposition import PCA
         pca = PCA(n_components=n_components, copy=True, svd_solver="arpack")
         pca.fit(edge_attr)
         edge_attr = pca.transform(edge_attr)

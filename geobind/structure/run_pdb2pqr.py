@@ -1,5 +1,6 @@
 # built in modules
 import os
+import shutil
 import subprocess
 from random import choice
 from string import ascii_letters
@@ -11,20 +12,37 @@ import numpy as np
 from .strip_hydrogens import stripHydrogens
 from .structure import StructureData
 
+def padCoordinates(pqrFile):
+    padded = open("tmp.pqr", "w")
+    with open(pqrFile) as FH:
+        for line in FH:
+            if line[0:4] == "ATOM":
+                s = line[:30]
+                e = line[54:]
+                x = line[30:38].strip()
+                y = line[38:46].strip()
+                z = line[46:54].strip()
+                padded.write("{}{:>9s}{:>9s}{:>9s}{}".format(s, x, y, z, e))
+            else:
+                padded.write(line)
+    padded.close()
+    shutil.move("tmp.pqr", pqrFile)
+
 def tempFileName(prefix, ext):
     return "%s.%s" % (prefix + ''.join(choice(ascii_letters) for i in range(15)), ext)
 
-def runPDB2PQR(structure, replace_hydrogens=False, command="pdb2pqr", add_charge_radius=True, keep_pqr=True, min_radius=0.6, structure_name=None):
+def runPDB2PQR(structure, replace_hydrogens=False, command="pdb2pqr", add_charge_radius=True, keep_pqr=True, min_radius=0.6, structure_name=None, pad_coords=True):
     try:
         from Bio.PDB import PDBParser
     except ModuleNotFoundError:
-        raise ModuleNotFoundError("The dependency 'BioPython' is required.")
+        raise ModuleNotFoundError("The dependency 'BioPython' is required!")
     
     if structure_name is None:
         structure_name = structure.name
     
+    FNULL = open(os.devnull, 'w')
     # check if PDB2PQR is installed
-    rc = subprocess.call(['which', command])
+    rc = subprocess.call(['which', command], stdout=FNULL, stderr=FNULL)
     if rc:
         raise Exception("Command {} not found when trying to run PDB2PQR!".format(command))
     
@@ -38,11 +56,14 @@ def runPDB2PQR(structure, replace_hydrogens=False, command="pdb2pqr", add_charge
     structure.save(tmpFile)
     
     # Run PDB2PQR
-    FNULL = open(os.devnull, 'w')
+    if add_charge_radius:
+        chain_flag = "--chain"
+    else:
+        chain_flag = ""
     subprocess.call([
-            'pdb2pqr',
-            '--ff=AMBER',
-            '--keep-chain',
+            command,
+            '--ff=amber',
+            chain_flag,
             tmpFile,
             pqrFile
         ],
@@ -79,6 +100,8 @@ def runPDB2PQR(structure, replace_hydrogens=False, command="pdb2pqr", add_charge
     # clean up
     os.remove(tmpFile)
     if keep_pqr:
+        if pad_coords:
+            padCoordinates(pqrFile)
         return structure, pqrFile
     else:
         os.remove(pqrFile)

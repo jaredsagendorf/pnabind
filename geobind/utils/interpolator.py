@@ -1,8 +1,12 @@
 # third party packages
-from gridData import Grid
 
 class Interpolator(object):
     def __init__(self, fileName):
+        try:
+            from gridData import Grid
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError("The dependency 'GridDataFormats' is required for this functionality!")
+        
         self.grid = Grid(fileName) # stores the grid data
             
     def __call__(self, xyz):

@@ -6,7 +6,7 @@ from .get_residue_id import getResidueID
 from .get_atom_kdtree import getAtomKDTree
 from .data import data
 
-def getCV(structure, radius, residue_ids=None, ns=None, feature_name="cv", hydrogens=False, bonds=None):
+def getCV(structure, radius, residue_ids=None, ns=None, feature_name="cv", impute_hydrogens=False, bonds=None):
     """get CV values for every residue in residues"""
     
     if residue_ids is None:
@@ -24,7 +24,7 @@ def getCV(structure, radius, residue_ids=None, ns=None, feature_name="cv", hydro
         cid, num, ins = resID.split('.')
         residue = structure.get_residue((' ', int(num), ins), cid)
         for atom in residue:
-            if not hydrogens and atom.element == 'H':
+            if impute_hydrogens and atom.element == 'H':
                 continue
             vector = np.zeros(3)
             count = 0
@@ -32,15 +32,15 @@ def getCV(structure, radius, residue_ids=None, ns=None, feature_name="cv", hydro
             for n in neighbors:
                 if n == atom:
                     continue
-                if not hydrogens and n.element == 'H':
+                if impute_hydrogens and n.element == 'H':
                     continue
                 dx = atom.get_coord() - n.get_coord()
                 vector += dx/(np.linalg.norm(dx) + 1e-5)
                 count += 1
             atom.xtra[feature_name] = 1 - np.linalg.norm(vector)/(count + 1e-5)
     
-    # use parent atom as hydrogen CV value if we exluded them
-    if not hydrogens:
+    if impute_hydrogens:
+        # use parent atom as hydrogen CV value if we exluded them
         if bonds is None:
             # use default bond data
             bonds = data.covalent_bond_data
@@ -57,4 +57,4 @@ def getCV(structure, radius, residue_ids=None, ns=None, feature_name="cv", hydro
                 if parent_atom in residue:
                     atom.xtra[feature_name] = residue[parent_atom].xtra[feature_name]
     
-    return [feature_name]
+    return feature_name

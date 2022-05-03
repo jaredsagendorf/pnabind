@@ -1,8 +1,12 @@
 # third party modules
 import numpy as np
-import igl
 
 def getConvexHullDistance(mesh):
+    try:
+        import igl
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("The dependency 'igl' is required for this functionality!")
+    
     hull = mesh.convex_hull
     distances, indices, closest_pts = igl.point_mesh_squared_distance(mesh.vertices, hull.vertices, hull.faces)
     

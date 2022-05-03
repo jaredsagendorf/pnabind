@@ -1,11 +1,14 @@
 # third party modules
-import igl
 import numpy as np
 
 # geobind modules
 from geobind.utils import clipOutliers
 
 def getMeshCurvature(mesh, gaussian_curvature=True, mean_curvature=True, shape_index=True, remove_outliers=True):
+    try:
+        import igl
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("The dependency 'igl' is required for this functionality!")
     
     v1, v2, k1, k2 = igl.principal_curvature(mesh.vertices, mesh.faces)
     

@@ -1,12 +1,15 @@
 # third party packages
 import numpy as np
-from scipy.stats import zscore
 
 def clipOutliers(data, method="IQR", axis=None):
-    if(method == "z-score"):
+    if method == "z-score":
+        try:
+            from scipy.stats import zscore
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError("The dependency 'SciPy' is required for this functionality!'")
         Z = np.abs(zscore(data, axis=axis))
         mask = (Z > 3)
-    elif(method == "IQR"):
+    elif method == "IQR":
         Q1 = np.quantile(data, 0.25, axis=axis)
         Q3 = np.quantile(data, 0.75, axis=axis)
         IQR = Q3 - Q1 

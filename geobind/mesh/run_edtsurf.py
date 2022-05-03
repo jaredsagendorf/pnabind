@@ -3,7 +3,7 @@ import os
 import subprocess
 
 # geobind modules
-from .io_utils import __move
+from geobind.utils import moveFile
 from .mesh import Mesh
 
 def runEDTSurf(pdbfile, file_prefix='mesh', basedir='.', clean=True, quiet=True, mesh_kwargs={}, **kwargs):
@@ -48,7 +48,7 @@ def runEDTSurf(pdbfile, file_prefix='mesh', basedir='.', clean=True, quiet=True,
                 os.remove(f)
     else:
         for f in files:
-            __move(f, basedir)
+            moveFile(f, basedir)
     
     return mesh
     

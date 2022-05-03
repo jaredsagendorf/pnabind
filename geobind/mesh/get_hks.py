@@ -1,12 +1,15 @@
 # third party modules
-from scipy.sparse.linalg import eigsh as sp_eigs
-from scipy.sparse import diags
 import numpy as np
 
 # geobind modules
 from geobind.utils import clipOutliers
 
 def getHKS(mesh, num_samples=3, num_components=50, feature_name='hks', tau=1, eps=1e-5, normalize=True, **kwargs):
+    try:
+        from scipy.sparse.linalg import eigsh as sp_eigs
+        from scipy.sparse import diags
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("The dependency 'SciPy' is required for this functionality!")
     
     # compute eigenvalues and eigenvectors of Laplace-Beltrami operator
     L = -mesh.cot_matrix

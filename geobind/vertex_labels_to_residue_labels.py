@@ -1,5 +1,5 @@
+# third party modules
 import numpy as np
-import networkx as nx
 
 # geobind modules
 from geobind.structure import StructureData
@@ -9,6 +9,11 @@ from geobind.structure import mapPointFeaturesToStructure, getResidueDistance
 
 def smoothResiduePredictions(structure, residue_dict, nc=2, edge_dist_threshold=4.0, niter=1, hydrogens=False, ignore_class=set()):
     """Apply laplacian smoothing"""
+    try:
+        import networkx as nx
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("The dependency 'networkx' is required for this functionality!")
+    
     residues = []
     atoms = []
     labels = []

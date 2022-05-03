@@ -6,19 +6,19 @@ import subprocess
 import numpy as np
 
 # geobind packages
-from .io_utils import __move
+from geobind.utils import moveFile
 from .mesh import Mesh
 
 def runMSMS(atoms, file_prefix='mesh', basedir='.', 
         clean=True, quiet=True, hydrogens=True, area_only=False, mesh_kwargs={}, **kwargs
     ):
     # generate coordinate file
-    if(not isinstance(atoms, list)):
+    if not isinstance(atoms, list):
         atoms = atoms.get_atoms()
     coordFile = "{}_coords.xyzr".format(file_prefix)
     FH = open(coordFile, "w")
     for atom in atoms:
-        if((not hydrogens) and atom.element == "H"):
+        if (not hydrogens) and atom.element == "H":
             continue
         atmn = atom.name
         acoords = atom.get_coord()
@@ -34,7 +34,7 @@ def runMSMS(atoms, file_prefix='mesh', basedir='.',
         'surface': 'tses'
     }
     msms_opts.update(kwargs)
-    if(area_only):
+    if area_only:
         msms_opts['surface'] = 'ases'
     
     # run MSMS and generate vertex and face file
@@ -60,9 +60,9 @@ def runMSMS(atoms, file_prefix='mesh', basedir='.',
         if clean:
             os.remove("{}_coords.xyzr".format(file_prefix))
         else:
-            __move("{}_coords.xyzr".format(file_prefix), basedir)
+            moveFile("{}_coords.xyzr".format(file_prefix), basedir)
         af = "{}.area".format(file_prefix)
-        __move(af, basedir)
+        moveFile(af, basedir)
         
         return os.path.join(os.path.abspath(basedir), af)
     else:
@@ -98,10 +98,10 @@ def runMSMS(atoms, file_prefix='mesh', basedir='.',
             os.remove("{}_coords.xyzr".format(file_prefix))
             os.remove("{}.area".format(file_prefix))
         else:
-            __move("{}.face".format(file_prefix), basedir)
-            __move("{}.vert".format(file_prefix), basedir)
-            __move("{}_coords.xyzr".format(file_prefix), basedir)
-            __move("{}.area".format(file_prefix), basedir)
+            moveFile("{}.face".format(file_prefix), basedir)
+            moveFile("{}.vert".format(file_prefix), basedir)
+            moveFile("{}_coords.xyzr".format(file_prefix), basedir)
+            moveFile("{}.area".format(file_prefix), basedir)
         
         # return mesh
         return Mesh(vertices=vertexs, faces=faces, vertex_normals=normals, name=file_prefix, **mesh_kwargs)

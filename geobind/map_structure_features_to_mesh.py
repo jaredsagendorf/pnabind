@@ -5,7 +5,7 @@ import numpy as np
 from geobind.mesh import mapPointFeaturesToMesh
 from geobind.structure.data import data as D
 
-def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None, hydrogens=True, impute=True, **kwargs):
+def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None, include_hydrogens=True, impute=True, **kwargs):
     """
         map_to: neighborhood, nearest
     """
@@ -18,7 +18,7 @@ def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None,
     features = [] # atomic features
     F = lambda f: atom.xtra.get(f, 0.0)
     for atom in structure.get_atoms():
-        if not hydrogens and atom.element == 'H':
+        if not include_hydrogens and atom.element == 'H':
             # ignore hydrogen atoms
             continue
         
@@ -31,6 +31,7 @@ def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None,
         
         if not impute and not all([fn in atom.xtra for fn in feature_names]):
             # skip if atom missing any features
+            print(atom.get_id(), atom.xtra)
             continue
         
         coords.append(atom.coord)

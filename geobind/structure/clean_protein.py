@@ -1,13 +1,16 @@
 #### Biopython Disordered Atom Fix ####
-import Bio.PDB
-copy = Bio.PDB.Atom.copy
-def myCopy(self):
-    shallow = copy.copy(self)
-    for child in self.child_dict.values():
-        shallow.disordered_add(child.copy())
-    return shallow
-Bio.PDB.Atom.DisorderedAtom.copy=myCopy
-#### Biopython Disordered Atom Fix ####
+try:
+    import Bio.PDB
+    copy = Bio.PDB.Atom.copy
+    def myCopy(self):
+        shallow = copy.copy(self)
+        for child in self.child_dict.values():
+            shallow.disordered_add(child.copy())
+        return shallow
+    Bio.PDB.Atom.DisorderedAtom.copy=myCopy
+except ModuleNotFoundError:
+    # BioPython isn't found - futher attempts to import will raise an exception
+    pass
 
 # built in modules
 import logging
@@ -19,7 +22,6 @@ from string import ascii_letters
 
 # third party modules
 import numpy as np
-from Bio.PDB import PDBParser
 
 # geobind modules
 from .strip_hydrogens import stripHydrogens
@@ -27,12 +29,16 @@ from .data import data
 from .structure import StructureData
 from .run_pdb2pqr import runPDB2PQR
 
-class ResidueMutator(object):
-    from Bio.SVDSuperimposer import SVDSuperimposer
-    
+class ResidueMutator(object):    
     def __init__(self, tripeptides=None, components=None, standard_residues=None):
         """ The mutator object takes a non-standard residue or incomplete residue and modifies it
         """
+        try:
+            from Bio.PDB import PDBParser
+            from Bio.SVDSuperimposer import SVDSuperimposer
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError("BioPython is required for this functionality")
+        
         # get defaults if not provided
         if standard_residues is None:
             standard_residues = data.standard_residues
@@ -43,7 +49,7 @@ class ResidueMutator(object):
         self.components = components
         self.candidates = {}
         self.standard_residues = standard_residues
-        self.imposer = self.SVDSuperimposer()
+        self.imposer = SVDSuperimposer()
         self.parser = PDBParser(PERMISSIVE=1,QUIET=True)
         
         # build up candidate structures

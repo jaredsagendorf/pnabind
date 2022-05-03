@@ -1,9 +1,9 @@
 import warnings
 
 # third party modules
-import gdist
 import numpy as np
 
+# geobind modules
 from geobind.mesh._zernike import meshZernikeMoments
 from .laplacian_smoothing import laplacianSmoothing
 
@@ -57,6 +57,10 @@ class Momentor(object):
         return np.array(moments)
 
 def getRadialGeodesicPatches(mesh, radius=3.5, add_self_loops=True, to_csr=False):
+    try:
+        import gdist
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("The dependency 'gdist' is required for this functionality!")
     
     V = mesh.vertices.astype(np.float64)
     F = mesh.faces.astype(np.int32)

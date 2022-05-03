@@ -5,7 +5,11 @@ import logging
 
 # third party modules
 import numpy as np
-from scipy.spatial import cKDTree
+try:
+    from scipy.spatial import cKDTree
+except BaseException as E:
+    from .exceptions import ExceptionModule
+    cKDTree = ExceptionModule(E)
 
 # geobind modules
 from geobind.structure.data import data
@@ -120,7 +124,7 @@ class AtomToClassMapper(object):
 
 def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
         distance_cutoff=4.0,
-        hydrogens=True,
+        include_hydrogens=True,
         check_for_intersection=True,
         smooth=False,
         smoothing_threshold=50.0,
@@ -134,7 +138,7 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
     Y[:,0] += 1e-5 # add small value to default class to avoid possible ties  
     for atom in structure.get_atoms():
         # check if we include hydrogens
-        if not hydrogens and atom.element == 'H':
+        if not include_hydrogens and atom.element == 'H':
             continue
         
         # assign a class to this atom
@@ -144,10 +148,10 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
         # get nearest vertices
         v, d = mesh.verticesInBall(atom.coord, distance_cutoff)
         
-        if(len(v) > 0):
+        if len(v) > 0:
             w = np.clip(1/(d+1e-5), 0.0, 2.0)
             
-            if(check_for_intersection):
+            if check_for_intersection:
                 # check if atom-vertex segments intersect the mesh
                 t = mesh.facesInBall(atom.coord, distance_cutoff)
                 ind = segmentsIntersectTriangles(

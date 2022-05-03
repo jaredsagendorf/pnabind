@@ -1,6 +1,7 @@
+# third party modules
 import numpy as np
-import trimesh
 
+# geobind modules
 from .get_class_segmentations import getClassSegmentations
 
 def smoothMeshLabels(edges, labels, num_classes, 
@@ -10,6 +11,11 @@ def smoothMeshLabels(edges, labels, num_classes,
             ignore_class=None,
             **kwargs
     ):
+    try:
+        import trimesh
+    except ModuleNotFoundError:
+        raise duleNotFoundError("The dependency 'Trimesh' is required for this functionality!")
+    
     # get class segmentations
     clusters, cluster_idx, cluster_areas, cluster_labels = getClassSegmentations(edges, labels, faces=faces, area_faces=area_faces, **kwargs)
     num_clusters = len(clusters)

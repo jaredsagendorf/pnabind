@@ -7,97 +7,20 @@ import os
 
 # third party modules
 import numpy as np
-import trimesh
-import igl
-
-#import networkx as nx
-#from matplotlib import cm
-#from scipy.spatial import cKDTree
-#from scipy.sparse import coo_matrix
-
-
-#class BoundingBox(object):
-    #"""Simple class for constructing the eight corners defining the rectangular bounding box
-    #of a set of points."""
-    #def __init__(self, points):
-        #self.points = points
-        #xmin, ymin, zmin = points[:,0].min(), points[:,1].min(), points[:,2].min()
-        #xmax, ymax, zmax = points[:,0].max(), points[:,1].max(), points[:,2].max()
-        #self.corners = np.array([
-            #[xmin, ymin, zmin],
-            #[xmin, ymin, zmax],
-            #[xmin, ymax, zmax],
-            #[xmin, ymax, zmin],
-            #[xmax, ymin, zmin],
-            #[xmax, ymin, zmax],
-            #[xmax, ymax, zmax],
-            #[xmax, ymax, zmin]
-        #])
-        #self.edges = [
-            #(self.corners[0], self.corners[1]),
-            #(self.corners[1], self.corners[2]),
-            #(self.corners[2], self.corners[3]),
-            #(self.corners[3], self.corners[0]),
-            
-            #(self.corners[4], self.corners[5]),
-            #(self.corners[5], self.corners[6]),
-            #(self.corners[6], self.corners[7]),
-            #(self.corners[7], self.corners[4]),
-            
-            #(self.corners[0], self.corners[4]),
-            #(self.corners[1], self.corners[5]),
-            #(self.corners[2], self.corners[6]),
-            #(self.corners[3], self.corners[7]),
-        #]
-        #self.__max_length = None
-        #self.__min_length = None
-        #self.__aspect_ratio = None
-    
-    #@property
-    #def max_length(self):
-        #if(self.__max_length is None):
-            ## iterate over edges to find the longest
-            #self.__max_length = float('-inf')
-            #for e in self.edges:
-                #self.__max_length = max(np.linalg.norm(e[1]-e[0]), self.__max_length)
-        #return self.__max_length
-    #@max_length.setter
-    #def max_length(self, l):
-        #if(l < 0):
-            #raise ValueError("Length must be non-zero.")
-        #else:
-            #self.__max_length = l
-    
-    #@property
-    #def min_length(self):
-        #if(self.__min_length is None):
-            ## iterate over edges to find the shortest
-            #self.__min_length = float('inf')
-            #for e in self.edges:
-                #self.__min_length = min(np.linalg.norm(e[1]-e[0]), self.__min_length)
-        #return self.__min_length
-    #@min_length.setter
-    #def min_length(self, l):
-        #if(l < 0):
-            #raise ValueError("Length must be non-zero.")
-        #else:
-            #self.__min_length = l
-    
-    #@property
-    #def aspect_ratio(self):
-        #if(self.__aspect_ratio is None):
-            #self.__aspect_ratio = self.max_length/self.min_length
-        #return self.__aspect_ratio
-    #@aspect_ratio.setter
-    #def aspect_ratio(self, ar):
-        #if(ar < 1.0):
-            #raise ValueError("Ratio must be greater than or equal to 1.0.")
-        #else:
-            #self.__aspect_ratio = ar
+try:
+    import igl
+except BaseException as E:
+    from geobind import ExceptionModule
+    igl = ExceptionModule(E)
 
 class Mesh(object):
     """Wrapper class for storing a trimesh mesh and peforming some basic operations"""
-    def __init__(self, handle=None, vertices=None, faces=None, name="mesh", process=True, remove_disconnected_components=True, smoothing=None, **kwargs):
+    def __init__(self, handle=None, vertices=None, faces=None, name="mesh", process=True, remove_disconnected_components=True, smoothing=None, smoothing_kwargs={}, **kwargs):
+        try:
+            import trimesh
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError("Trimesh is required for mesh-related functionality!")
+        
         self.name = name
         if handle is not None:
             if isinstance(handle, str):
@@ -120,8 +43,11 @@ class Mesh(object):
         if remove_disconnected_components:
             # remove any disconnected components
             self.remove_disconnected_components()
-        else:
-            self.__reset()
+        
+        if smoothing == "taubin":
+            trimesh.smoothing.filter_taubin(self.mesh, **smoothing_kwargs)
+        
+        self.__reset()
     
     @property
     def area_faces(self):
@@ -153,9 +79,13 @@ class Mesh(object):
     
     @property
     def vertex_adjacency_matrix(self):
-        if("vertex_adjacency_matrix" not in self.cache):
-            from scipy.sparse import coo_matrix
-            import networkx as nx
+        if "vertex_adjacency_matrix" not in self.cache:
+            try:
+                from scipy.sparse import coo_matrix
+                import networkx as nx
+            except ModuleNotFoundError:
+                raise ModuleNotFoundError("The dependencies 'networkx' and 'scipy' are required for this function!")
+            
             self.cache["vertex_adjacency_matrix"] = coo_matrix(nx.adjacency_matrix(self.vertex_adjacency_graph, nodelist=[i for i in range(self.num_vertices)]))
         return self.cache["vertex_adjacency_matrix"]
     
@@ -163,7 +93,7 @@ class Mesh(object):
     def undirected_edge_indices(self):
         """ Return a set of edge indices such that (i,j) and (j,i) are in E for
         all i and j pairs """
-        if("undirected_edge_indices" not in self.cache):
+        if "undirected_edge_indices" not in self.cache:
             self.cache["undirected_edge_indices"] = np.stack([
                 self.cache["vertex_adjacency_matrix"].row,
                 self.cache["vertex_adjacency_matrix"].col
@@ -205,13 +135,13 @@ class Mesh(object):
     
     @property
     def cot_matrix(self):
-        if('cot_matrix' not in self.cache):
+        if 'cot_matrix' not in self.cache:
             self.cache['cot_matrix'] = igl.cotmatrix(self.vertices, self.faces)
         return self.cache['cot_matrix']
     
     @property
     def mass_matrix(self):
-        if('mass_matrix' not in self.cache):
+        if 'mass_matrix' not in self.cache:
             self.cache['mass_matrix'] = igl.massmatrix(self.vertices, self.faces, igl.MASSMATRIX_TYPE_VORONOI)
         return self.cache['mass_matrix']
         
@@ -262,14 +192,14 @@ class Mesh(object):
     
     def findNeighbors(self, v, k=1, nlist=None, vo=None):
         """Returns the k-neighbors of a given vertex"""
-        if(nlist is None):
+        if nlist is None:
             nlist = set()
-        if(k == 0):
+        if k == 0:
             return
-        if(vo is None):
+        if vo is None:
             vo = v
         for n in self.vertex_adjacency_graph.neighbors(v):
-            if(n == vo):
+            if n == vo:
                 continue
             nlist.add(n)
             self.findNeighbors(n, k=k-1, nlist=nlist, vo=vo)
@@ -277,12 +207,12 @@ class Mesh(object):
     
     def save(self, directory=".", file_name=None, file_format="off", overwrite=False):
         """Writes the mesh to file"""
-        if(file_name is None):
+        if file_name is None:
             file_name = "{}.{}".format(self.name, file_format)
         
         path = os.path.join(directory, file_name)
         exists = os.path.exists(path) # check if file already exists
-        if(exists and not overwrite):
+        if exists and not overwrite:
             # just return the existing path and do not overwrite
             return path
         

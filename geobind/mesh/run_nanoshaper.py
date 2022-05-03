@@ -3,7 +3,7 @@ import os
 import subprocess
 
 # geobind modules
-from .io_utils import __move
+from geobind.utils import moveFile
 from .mesh import Mesh
 
 def runNanoShaper(atoms, file_prefix, basedir, 
@@ -31,14 +31,15 @@ def runNanoShaper(atoms, file_prefix, basedir,
         "surface_type": "skin",
         "build_status_map": "true",
         "cavity_filling_volume": 100,
-        "skin_parameter": 0.45,
+        "skin_surface_parameter": 0.45,
         "accurate_triangulation": "true",
         "smooth_mesh": "true",
         "blobbyness": -2.5,
         "radius_big": 3.0
     }
     nanoshaper_args.update(kwargs)
-    if(pockets_only):
+    
+    if pockets_only:
         # change operation mode
         nanoshaper_args['op_mode'] = 'pockets'
     prm_template = """
@@ -52,7 +53,7 @@ Build_epsilon_maps = false
 Build_status_map = {build_status_map}
 # Surface Parameters
 Surface = {surface_type}
-Skin_Surface_Parameter = {skin_parameter}
+Skin_Surface_Parameter = {skin_surface_parameter}
 Blobbyness = {blobbyness}
 Skin_Fast_Projection = false
 Accurate_Triangulation = {accurate_triangulation}
@@ -80,7 +81,7 @@ Vertex_Atom_Info = false"""
         "NanoShaper",
         "{}.prm".format(file_prefix)
     ]
-    if(quiet):
+    if quiet:
         FNULL = open(os.devnull, 'w')
         subprocess.call(args, stdout=FNULL, stderr=FNULL)
         FNULL.close()
@@ -104,13 +105,13 @@ Vertex_Atom_Info = false"""
         os.remove("{}.prm".format(file_prefix))
         os.remove("{}.xyzr".format(file_prefix))
     else:
-        __move("{}.prm".format(file_prefix), basedir)
-        __move("{}.xyzr".format(file_prefix), basedir)
+        moveFile("{}.prm".format(file_prefix), basedir)
+        moveFile("{}.xyzr".format(file_prefix), basedir)
     
     # move meshfile to base dir
     meshfile = "{}.off".format(file_prefix)
     if basedir != os.getcwd():
-        __move(meshfile, basedir)
+        moveFile(meshfile, basedir)
         meshfile = os.path.join(basedir, meshfile)
     
     return Mesh(handle=meshfile, name=file_prefix, **mesh_kwargs)

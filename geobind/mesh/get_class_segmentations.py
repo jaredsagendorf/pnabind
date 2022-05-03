@@ -1,6 +1,5 @@
+# third party modules
 import numpy as np
-import trimesh
-from scipy.spatial.distance import cdist
 
 # geobind modules
 from geobind.utils import segmentsIntersectTriangles
@@ -18,6 +17,16 @@ def getClassSegmentations(edges, labels,
     """This function identifies clusters of connected vertices which share a common class label and
     returns them as a list of vertex indices as well as arrays containing the area of each cluster, 
     label of each clusters, and map from vertex indicies to cluster index"""
+    
+    try:
+        import trimesh
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("The dependency 'Trimesh' is required for this functionality!")
+    try:
+        from scipy.spatial.distance import cdist
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("The dependency 'SciPy' is required for this functionality!")
+
     nodes = np.arange(len(labels))
     
     # compute a weight for each node

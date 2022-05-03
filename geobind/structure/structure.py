@@ -3,11 +3,6 @@ import os
 import logging
 
 # third party modules
-from Bio.PDB import PDBParser, MMCIFParser, PDBIO
-from Bio.PDB.Entity import Entity
-from Bio.PDB.Structure import Structure
-from Bio.PDB.Model import Model
-from Bio.PDB.Chain import Chain
 import numpy as np
 
 # geobind modules
@@ -16,6 +11,12 @@ from .get_surface_residues import getSurfaceResidues
 
 class StructureData(object):    
     def __init__(self, structure, name='structure', path='.'):
+        try:
+            from Bio.PDB import PDBParser, MMCIFParser
+            from Bio.PDB.Entity import Entity
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError("BioPython is a required dependency for structure-related functions!")
+        
         if isinstance(structure, str):
             file_type = (str(structure).split('.')[-1]).lower()
             if file_type in ('pdb', 'ent'):
@@ -57,7 +58,10 @@ class StructureData(object):
     def slice(cls, obj, selection, name='slice'):
         """Create a new Structure object 'S2' from a slice of the current one, 'S1'. <selection> 
         defines which  descendents 'S1' will be stored in 'S2'."""
-        
+        from Bio.PDB.Structure import Structure
+        from Bio.PDB.Model import Model
+        from Bio.PDB.Chain import Chain
+
         ent = Structure(name) # Biopython structure object
         # Loop over selection and determine what model/chain objects we need to create in order to
         # store the slice
@@ -164,6 +168,7 @@ class StructureData(object):
         return nn
     
     def save(self, outfile=None, bfactor_key=None):
+        from Bio.PDB import PDBIO
         __io = PDBIO()
         # write structure to file
         if outfile is None:
