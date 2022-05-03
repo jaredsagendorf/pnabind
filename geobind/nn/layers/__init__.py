@@ -4,6 +4,9 @@ from .continuous_crf import ContinuousCRF
 from .mesh_pooling import MeshPooling
 from .hist_conv import PPHConv
 from .local_attn_pooling import LocalAttentionPooling
+from .edge_attention_conv import EdgeAttentionConv
+from .sa_module import SAModule
+from .fp_module import FPModule
 
 __all__ = [
     "EdgePooling",
@@ -11,5 +14,8 @@ __all__ = [
     "NNRELoss",
     "ContinuousCRF",
     "PPHConv",
-    "LocalAttentionPooling"
+    "SAModule",
+    "FPModule",
+    "LocalAttentionPooling",
+    "EdgeAttentionConv"
 ]
