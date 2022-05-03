@@ -1,7 +1,13 @@
-from torch.nn import ReLU, ELU, Identity, Tanh, Dropout
+from torch.nn import ReLU, ELU, Identity, Tanh, Dropout, PReLU
 from torch.nn import Sequential as Seq, Linear as Lin, BatchNorm1d as BN
 
-def MLP(channels, batch_norm=True, act='relu', bn_kwargs={}, dropout=0.0, dropout_position="right", bias=True):
+def MLP(channels, batch_norm=True, act='relu', bn_kwargs={}, dropout=0.0, dropout_position="right", batchnorm_position="right", bias=True):
+    if batch_norm:
+        # bad practice to mix these two
+        assert dropout == 0.0
+    if dropout > 0.0:
+        # bad practice to mix these two
+        assert not batch_norm
     
     if isinstance(act, str) or act is None:
         act = [act]*(len(channels)-1)
@@ -22,6 +28,8 @@ def MLP(channels, batch_norm=True, act='relu', bn_kwargs={}, dropout=0.0, dropou
             activation.append(ELU)
         elif a == 'tanh':
             activation.append(Tanh)
+        elif a == "prelu":
+            activation.append(PReLU)
         else:
             raise ValueError("unrecognized keyword: {}".format(act))
     
@@ -30,11 +38,14 @@ def MLP(channels, batch_norm=True, act='relu', bn_kwargs={}, dropout=0.0, dropou
         if dropout[i-1] > 0 and dropout_position == "left":
             layers.append(Dropout(p=dropout[i-1]))
         
-        layers.append(
-            Seq(Lin(channels[i-1], channels[i], bias=bias), activation[i-1]())
-        )
+        layers.append(Lin(channels[i-1], channels[i], bias=bias))
         
-        if batch_norm[i-1]:
+        if batch_norm[i-1] and batchnorm_position == "left":
+            layers.append(BN(channels[i], **bn_kwargs))
+        
+        layers.append(activation[i-1]())
+        
+        if batch_norm[i-1] and batchnorm_position == "right":
             layers.append(BN(channels[i], **bn_kwargs))
         
         if dropout[i-1] > 0 and dropout_position == "right":
