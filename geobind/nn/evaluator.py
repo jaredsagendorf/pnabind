@@ -67,7 +67,7 @@ class Evaluator(object):
                     'recall': lambda n: (n[1] > 0),
                     'accuracy': lambda n: True,
                     'specificity': lambda n: (n[0] > 0),
-                    'matthews_corrcoef': True
+                    'matthews_corrcoef': lambda n: True
                 }
             elif nc > 2:
                 # three or more classes 
