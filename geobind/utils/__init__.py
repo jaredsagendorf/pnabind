@@ -4,6 +4,7 @@ from .clip_outliers import clipOutliers
 from .generate_uniform_sphere_points import generateUniformSpherePoints
 from .log_output import logOutput
 from .line_segments_intersect_triangles import segmentsIntersectTriangles
+from .io_utils import moveFile
 
 __all__ = [
     "Interpolator",
@@ -11,5 +12,6 @@ __all__ = [
     "clipOutliers",
     "generateUniformSpherePoints",
     "logOutput",
-    "segmentsIntersectTriangles"
+    "segmentsIntersectTriangles",
+    "moveFile"
 ]
