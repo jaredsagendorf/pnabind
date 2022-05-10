@@ -67,7 +67,7 @@ class Evaluator(object):
                     'recall': lambda n: (n[1] > 0),
                     'accuracy': lambda n: True,
                     'specificity': lambda n: (n[0] > 0),
-                    'matthews_corrcoef': lambda n: True
+                    'matthews_corrcoef': lambda n: (n[0] > 0) and (n[1] > 0)
                 }
             elif nc > 2:
                 # three or more classes 
@@ -267,22 +267,28 @@ class Evaluator(object):
                 outs[i] = outs[i][masks[i]]
             
             # Compute metrics
-            n = np.bincount(y_gt[i])
+            ngt = np.bincount(y_gt[i], minlength=2)
+            npr = np.bincount(y_pr, minlength=2)
             if self.nc > 2:
                 y_gt[i] = np.eye(self.nc)[y_gt[i]]
                 y_pr = np.eye(self.nc)[y_pr]
             for metric, kw in self.metrics.items():
                 if metric == 'auprc' or metric == 'auroc':
                     # AUC metrics
-                    if self.metrics_check[metric] is None or self.metrics_check[metric](n):
+                    if self.metrics_check[metric](ngt):
                         metric_values[metric].append(METRICS_FN[metric](y_gt[i], outs[i], **kw))
                     else:
                         metric_values[metric].append(nan)
                 elif metric == 'smoothness':
                     # use `getGraphMetrics` for this
                     continue
+                elif metric == "matthews_corrcoef":
+                    if self.metrics_check[metric](npr):
+                        metric_values[metric].append(METRICS_FN[metric](y_gt[i], y_pr, **kw))
+                    else:
+                        metric_values[metric].append(nan)
                 else:
-                    if self.metrics_check[metric] is None or self.metrics_check[metric](n):
+                    if self.metrics_check[metric](ngt):
                         metric_values[metric].append(METRICS_FN[metric](y_gt[i], y_pr, **kw))
                     else:
                         metric_values[metric].append(nan)
