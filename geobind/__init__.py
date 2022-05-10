@@ -4,7 +4,7 @@ import geobind.mesh
 import geobind.nn
 
 from .map_structure_features_to_mesh import mapStructureFeaturesToMesh
-from .assign_vertex_labels_to_mesh import assignMeshLabelsFromStructure, AtomToClassMapper, assignMeshLabelsFromList
+from .assign_vertex_labels_to_mesh import assignMeshLabelsFromStructure, AtomToClassMapper, assignMeshLabelsFromList, maskClassBoundary
 from .vertex_labels_to_residue_labels import vertexLabelsToResidueLabels
 from .exceptions import ExceptionModule
 
@@ -17,5 +17,6 @@ __all__ = [
     "assignMeshLabelsFromList",
     "AtomToClassMapper",
     "vertexLabelsToResidueLabels",
+    "maskClassBoundary",
     "ExceptionModule"
 ]

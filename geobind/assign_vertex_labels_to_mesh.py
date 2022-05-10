@@ -175,21 +175,14 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
         )
     
     if mask :
-        # mask the boundaries of any binding region
-        Yn = np.argwhere(Y == 0).flatten()
-        Yb = np.argwhere(Y != 0).flatten()
-        if len(Yb) > 0:
-            Kn = cKDTree(mesh.vertices[Yn])
-            query = Kn.query_ball_point(mesh.vertices[Yb], mask_cutoff) # all non-bs vertices within `mask_cutoff` of bs vertices
-            ind = [i for j in query for i in j] # need to flatten this list of lists
-            Y[Yn[ind]] = -1
+        label_mask = maskClassBoundary(mesh.vertices, Y, mask_cutoff=mask_cutoff, masked_class=0)
+        Y[~label_mask] = -1
     
     return Y
 
-def assignMeshLabelsFromList(model, mesh, residue_ids,
+def assignMeshLabelsFromList(model, mesh, residues,
         cl=1,
         nc=2,
-        distance_cutoff=2.5,
         hydrogens=True,
         smooth=False,
         smoothing_threshold=50.0,
@@ -201,18 +194,12 @@ def assignMeshLabelsFromList(model, mesh, residue_ids,
     
     # loop over residues
     key = 'bs'+str(cl)
-    for res_id in residue_ids:
-        cid, num, ins = res_id.split('.')
-        rid = (' ', int(num), ins.replace('_', ' '))
-        if cid in model and rid in model[cid]:
-            residue = model[cid][rid]
-            for atom in residue:
-                atom.xtra[key] = cl
-        else:
-            logging.info("%s.%s: residue '%s' not found for label mapping!", model.get_parent().get_id(), cid, res_id)
+    for residue in residues:
+        for atom in residue:
+            atom.xtra[key] = cl
     
     # map to vertices
-    Y = mapStructureFeaturesToMesh(mesh, model, [key], hydrogens=hydrogens, **kwargs)
+    Y = mapStructureFeaturesToMesh(mesh, model, [key], include_hydrogens=hydrogens, distance_cutoff=1.5, **kwargs)
     Y = np.round(Y.reshape(-1)).astype(int)
     
     if smooth:
@@ -225,13 +212,20 @@ def assignMeshLabelsFromList(model, mesh, residue_ids,
         )
     
     if mask :
-        # mask the boundaries of any binding region
-        Yn = np.argwhere(Y == 0).flatten()
-        Yb = np.argwhere(Y != 0).flatten()
-        if len(Yb) > 0:
-            Kn = cKDTree(mesh.vertices[Yn])
-            query = Kn.query_ball_point(mesh.vertices[Yb], mask_cutoff) # all non-bs vertices within `mask_cutoff` of bs vertices
-            ind = [i for j in query for i in j] # need to flatten this list of lists
-            Y[Yn[ind]] = -1
+        label_mask = maskClassBoundary(mesh.vertices, Y, mask_cutoff=mask_cutoff, masked_class=0)
+        Y[~label_mask] = -1
     
     return Y
+
+def maskClassBoundary(vertices, Y, mask_cutoff=4.0, masked_class=0, return_type=bool):
+    # mask the boundaries of any binding region
+    m_ind = np.argwhere(Y == masked_class).flatten() # indices of class to be masked
+    n_ind = np.argwhere(Y != masked_class).flatten() # indices of other classes
+    mask = np.ones_like(Y)
+    if len(n_ind) > 0 and len(m_ind) > 0:
+        Km = cKDTree(vertices[m_ind])
+        query = Km.query_ball_point(vertices[n_ind], mask_cutoff) # all 'm' vertices within `mask_cutoff` of 'n' vertices
+        ind = [i for j in query for i in j] # need to flatten this list of lists
+        mask[m_ind[ind]] = 0 # set mask to zero for 'm' vertices
+    
+    return mask.astype(return_type)

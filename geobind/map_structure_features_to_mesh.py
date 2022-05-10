@@ -31,7 +31,6 @@ def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None,
         
         if not impute and not all([fn in atom.xtra for fn in feature_names]):
             # skip if atom missing any features
-            print(atom.get_id(), atom.xtra)
             continue
         
         coords.append(atom.coord)
