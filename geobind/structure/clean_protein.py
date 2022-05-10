@@ -163,7 +163,6 @@ def cleanProtein(structure,
         run_pdb2pqr=True,
         quiet=False,
         remove_numerical_chain_id=False,
-        binding_site_ids=None,
         method="geobind",
         **kwargs
     ):
@@ -173,7 +172,7 @@ def cleanProtein(structure,
     prefix = structure.name # used for file names
     
     if remove_numerical_chain_id:
-        # APBS does not process numerical chain IDs correctly. This is a work-around
+        # APBS and TABI-PB does not process numerical chain IDs correctly. This is a work-around
         available_ids = list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
         
         # find current chain ids
@@ -183,6 +182,7 @@ def cleanProtein(structure,
             taken_ids.add(cid)
         
         # iterate over chains and update
+        chain_map = {}
         for chain in structure.get_chains():
             cid = chain.get_id()
             if cid.isnumeric():
@@ -193,12 +193,10 @@ def cleanProtein(structure,
                         continue
                     else:
                         break
+                chain_map[cid] = new_id
                 chain.id = new_id
-                if binding_site_ids:
-                    # update chain ids in this list
-                    for i in range(len(binding_site_ids)):
-                        rid = binding_site_ids[i]
-                        binding_site_ids[i] = re.sub('^%s' % cid, new_id, rid)
+            else:
+                chain_map[cid] = cid
     
     if method == "geobind":
         # set up needed objects
@@ -269,7 +267,7 @@ def cleanProtein(structure,
         fixer.addMissingAtoms()
         
         tmpFile2 = tempFileName(prefix, 'pdb')
-        PDBFile.writeFile(fixer.topology, fixer.positions, open(tmpFile2, 'w'))
+        PDBFile.writeFile(fixer.topology, fixer.positions, open(tmpFile2, 'w'), keepIds=True)
         
         # load new fixed structure
         structure = StructureData(tmpFile2, name=prefix)
@@ -287,7 +285,10 @@ def cleanProtein(structure,
         stripHydrogens(structure)
     
     # decide what to return
+    rargs = [structure]
     if run_pdb2pqr:
-        return structure, pqrFile
-    else:
-        return structure
+        rargs.append(pqrFile)
+    if remove_numerical_chain_id:
+        rargs.append(chain_map)
+    
+    return tuple(rargs)
