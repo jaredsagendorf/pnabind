@@ -131,3 +131,53 @@ def meshZernikeMoments(points, faces, order=10, scale_input=True):
     descriptors = pl.feature_extraction(Z, order).tolist()
     
     return descriptors
+
+def meshGeometricMomentInvariants(points, faces, center_input=True):
+    
+    from .pipelines import DefaultPipeline as Pipeline
+    
+    # ------------------------------------------------------------------------
+    # Translate all points so that they are centered at their mean,
+    # and scale them so that they are bounded by a unit sphere:
+    # ------------------------------------------------------------------------
+    if center_input:
+        center = np.mean(points, axis=0)
+        points = points - center
+    
+    # ------------------------------------------------------------------------
+    # Multiprocessor pipeline:
+    # ------------------------------------------------------------------------
+    pl = Pipeline()
+    
+    # ------------------------------------------------------------------------
+    # Geometric moments:
+    # ------------------------------------------------------------------------
+    order = 4
+    G = pl.geometric_moments_exact(points, faces, order)
+    
+    
+    # compute invariants
+    I1 = (G[4,0,0] + G[0,4,0] + G[0,0,4] + 2*G[2,2,0] + 2*G[2,0,2] + 2*G[0,2,2])/( G[0,0,0]**(7/3) )
+    
+    I2 = None
+    
+    I3 = None
+    
+    I4 = (
+        G[3,0,0]**2 +
+        G[0,3,0]**2 +
+        G[0,0,3]**2 +
+        3*G[1,2,0]**2 +
+        3*G[1,0,2]**2 +
+        3*G[0,1,2]**2 +
+        3*G[2,1,0]**2 +
+        3*G[0,2,1]**2 +
+        3*G[2,0,1]**2 +
+        6*G[1,1,1]**2
+        )/( G[0,0,0]**4 )
+    
+    I5 = None
+    
+    I6 = None
+    
+    return np.array([I1, I4])
