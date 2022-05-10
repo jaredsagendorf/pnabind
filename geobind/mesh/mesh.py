@@ -10,8 +10,8 @@ import numpy as np
 try:
     import igl
 except BaseException as E:
-    from geobind import ExceptionModule
-    igl = ExceptionModule(E)
+    import geobind
+    igl = geobind.ExceptionModule(E)
 
 class Mesh(object):
     """Wrapper class for storing a trimesh mesh and peforming some basic operations"""

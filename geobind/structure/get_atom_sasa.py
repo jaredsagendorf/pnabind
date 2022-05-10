@@ -6,8 +6,8 @@ try:
     import freesasa
     freesasa.setVerbosity(freesasa.nowarnings)
 except BaseException as E:
-    from geobind import ExceptionModule
-    freesasa = ExceptionModule(E)
+    import geobind
+    freesasa = geobind.ExceptionModule(E)
 
 # geobind modules
 from .data import data
