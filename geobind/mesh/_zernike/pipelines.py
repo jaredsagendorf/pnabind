@@ -218,7 +218,7 @@ class SerialPipeline(Pipeline):
                     aux_2 = np.flipud(aux_2)
                     aux_1 = np.concatenate([aux_2, aux_1])
                 F[n, l] = np.linalg.norm(aux_1, ord=2)
-        F = F.transpose()
+        #F = F.transpose()
         return F[F >= 0]
 
 def _mp_geometric_moments_exact_worker(pipeline, vertex_list, Cf_list, N):
@@ -366,9 +366,9 @@ class KoehlMultiproc(KoehlOptimizations):
         return self.factorial_scalar(N) * moments_array
 
 #DefaultPipeline = type('DefaultPipeline', (SerialPipeline,), {})
-#DefaultPipeline = type(
-#     'DefaultPipeline', (NumpyOptimizations, MultiprocPipeline,), {})
-#DefaultPipeline = type(
-#    'DefaultPipeline', (KoehlOptimizations, SerialPipeline), {})
-DefaultPipeline = type(
-    'DefaultPipeline', (KoehlMultiproc, SerialPipeline), {})
+
+#DefaultPipeline = type('DefaultPipeline', (NumpyOptimizations, MultiprocPipeline,), {})
+
+#DefaultPipeline = type('DefaultPipeline', (KoehlOptimizations, SerialPipeline), {})
+
+DefaultPipeline = type('DefaultPipeline', (KoehlMultiproc, SerialPipeline), {})

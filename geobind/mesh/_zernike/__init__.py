@@ -1,6 +1,5 @@
-from .get_zernike_moments import meshZernikeMoments, meshGeometricMomentInvariants
+from .get_mesh_descriptors import meshDescriptors
 
 __all__ = [
-    "meshZernikeMoments",
-    "meshGeometricMomentInvariants"
+    "meshDescriptors"
 ]

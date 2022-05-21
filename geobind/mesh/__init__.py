@@ -13,7 +13,7 @@ from .get_hks import getHKS
 from .smooth_mesh_labels import smoothMeshLabels
 from .get_class_segmentations import getClassSegmentations
 from .laplacian_smoothing import laplacianSmoothing
-from .get_patch_zernike_moments import getPatchZernikeMoments, Momentor
+from .get_patch_descriptors import getPatchDescriptors, MeshDescriptor
 
 __all__ = [
     "Mesh",
@@ -31,6 +31,6 @@ __all__ = [
     "smoothMeshLabels",
     "getClassSegmentations",
     "laplacianSmoothing",
-    "getPatchZernikeMoments",
-    "Momentor"
+    "getPatchDescriptors",
+    "MeshDescriptor"
 ]
