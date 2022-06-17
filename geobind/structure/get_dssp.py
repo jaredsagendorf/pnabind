@@ -1,4 +1,6 @@
-def getDSSP(model, PDBFileName, dssp_map=None, feature_name='secondary_structure', formatstr="{}({})"):
+import os
+
+def getDSSP(model, dssp_map=None, feature_name='secondary_structure', formatstr="{}({})", clean=True):
     try:
         from Bio.PDB.DSSP import DSSP
     except ModuleNotFoundError:
@@ -17,10 +19,14 @@ def getDSSP(model, PDBFileName, dssp_map=None, feature_name='secondary_structure
             "-": formatstr.format(feature_name, "L")
         }
     
+    # Write a PDB file
+    pdb_file = model.save()
+    
     # run DSSP using the DSSP class from BioPython
-    dssp = DSSP(model, PDBFileName)
+    dssp = DSSP(model, pdb_file)
     
     # store secondary structure in each atom property dict
+    keys = list(sorted(set(dssp_map.values())))
     for chain in model:
         cid = chain.get_id()
         for residue in chain:
@@ -33,6 +39,12 @@ def getDSSP(model, PDBFileName, dssp_map=None, feature_name='secondary_structure
                 ss = dssp_map['-']
             
             for atom in residue:
+                atom.xtra[keys[0]] = 0.0
+                atom.xtra[keys[1]] = 0.0
+                atom.xtra[keys[2]] = 0.0
                 atom.xtra[ss] = 1.0
     
-    return list(set(dssp_map.values()))
+    if clean:
+        os.remove(pdb_file)
+    
+    return keys
