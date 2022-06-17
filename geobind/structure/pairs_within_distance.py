@@ -1,10 +1,10 @@
 from .get_atom_kdtree import getAtomKDTree
 
-def pairsWithinDistance(struct1, struct2, distance=4.0, hydrogens=False, id_format='dnaprodb'):
+def pairsWithinDistance(struct1, struct2, distance=4.0, skip_hydrogens=True, id_format='biopython'):
     struct1_residue_ids = set()
     struct2_residue_ids = set()
     
-    if hydrogens:
+    if not skip_hydrogens:
         kdt = struct1.atom_KDTree
     else:
         alist = []
@@ -16,7 +16,7 @@ def pairsWithinDistance(struct1, struct2, distance=4.0, hydrogens=False, id_form
     
     for residue2 in struct2.get_residues():
         for atom2 in residue2:
-            if (not hydrogens) and atom2.element == 'H':
+            if skip_hydrogens and atom2.element == 'H':
                 continue
             
             residues1 = kdt.search(atom2.coord, distance, level='R')
