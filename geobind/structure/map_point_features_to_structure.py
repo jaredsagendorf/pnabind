@@ -3,7 +3,7 @@ import numpy as np
 from geobind.utils import oneHotEncode
 from .get_atom_kdtree import getAtomKDTree
 
-def mapPointFeaturesToStructure(points, atom_list, features, feature_names, kdtree=None, reduce_method='sum'):
+def mapPointFeaturesToStructure(points, atom_list, features, feature_names, kdtree=None, reduce_method='sum', impute=False, impute_value=0.0):
     if features.ndim == 1:
         features = features.reshape(-1, 1)
     
@@ -41,7 +41,10 @@ def mapPointFeaturesToStructure(points, atom_list, features, feature_names, kdtr
     for atom in atom_list:
         for fn in feature_names:
             if len(atom.xtra[fn]) == 0:
-                atom.xtra[fn] = 0
+                if impute:
+                    atom.xtra[fn] = impute_value
+                else:
+                    del atom.xtra[fn]
             else:
                 atom.xtra[fn] = reduce_fn(atom.xtra[fn])
 
