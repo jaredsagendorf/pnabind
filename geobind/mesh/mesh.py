@@ -15,7 +15,7 @@ except BaseException as E:
 
 class Mesh(object):
     """Wrapper class for storing a trimesh mesh and peforming some basic operations"""
-    def __init__(self, handle=None, vertices=None, faces=None, name="mesh", process=True, remove_disconnected_components=True, smoothing=None, smoothing_kwargs={}, **kwargs):
+    def __init__(self, handle=None, vertices=None, faces=None, name="mesh", process=True, remove_disconnected_components=True, disconnected_threshold=2000, smoothing=None, smoothing_kwargs={}, **kwargs):
         try:
             import trimesh
         except ModuleNotFoundError:
@@ -42,7 +42,7 @@ class Mesh(object):
         
         if remove_disconnected_components:
             # remove any disconnected components
-            self.remove_disconnected_components()
+            self.remove_disconnected_components(threshold=disconnected_threshold)
         
         if smoothing == "taubin":
             trimesh.smoothing.filter_taubin(self.mesh, **smoothing_kwargs)
@@ -160,13 +160,21 @@ class Mesh(object):
         # cached properties
         self.cache = {}
     
-    def remove_disconnected_components(self):
+    def remove_disconnected_components(self, threshold=None):
         """Remove disconnected subcomponents keeping the largest"""
-
+        from trimesh.util import concatenate
+        
         components = self.mesh.split()
         sizes = [len(c.vertices) for c in components]
+        if threshold is None:
+            self.mesh = components[np.argmax(sizes)]
+            self.num_components = 1
+        else:
+            threshold = min(threshold, max(sizes))
+            c = list(filter(lambda m: len(m.vertices) >= threshold, components))
+            self.num_components = len(c)
+            self.mesh = concatenate(c)
         
-        self.mesh = components[np.argmax(sizes)]
         self.__reset()
     
     def nearestVertex(self, x):
