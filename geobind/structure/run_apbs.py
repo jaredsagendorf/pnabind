@@ -7,7 +7,7 @@ import logging
 # geobind modules
 from geobind.utils import Interpolator
 
-def runAPBS(pqr, command="apbs", prefix="tmp", basedir='.', quiet=True, clean=True, space=0.3, cfac=1.7, fadd=20, gmemceil=400, processors=8, keep_dx=False):
+def runAPBS(pqr, command="apbs", prefix="tmp", basedir='.', quiet=True, clean=True, space=0.5, cfac=1.7, fadd=20, gmemceil=400, keep_dx=False):
     """ run APBS and return potential """
     
     # run psize to get grid length parameters
