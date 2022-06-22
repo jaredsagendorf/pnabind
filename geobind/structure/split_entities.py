@@ -19,4 +19,4 @@ def splitEntities(structure, regexes=None, atom_mapper=None, mi=0):
                 else:
                     lig.append(residue.get_full_id())
     
-    return structure.slice(structure, pro, '{}_protein'.format(structure.name)), structure.slice(structure, lig, '{}_ligand'.format(structure.name))
+    return structure.slice(structure, pro, name='{}_protein'.format(structure.name)), structure.slice(structure, lig, name='{}_ligand'.format(structure.name))
