@@ -189,11 +189,12 @@ def assignMeshLabelsFromList(model, mesh, residues,
         no_smooth=None,
         mask=False,
         mask_cutoff=4.0,
+        feature_name="bs",
         **kwargs
     ):
     
     # loop over residues
-    key = 'bs'+str(cl)
+    key = feature_name+str(cl)
     for residue in residues:
         for atom in residue:
             atom.xtra[key] = cl

@@ -29,13 +29,13 @@ def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None,
             if not (rid in residue_ids):
                 continue
         
-        if not impute and not all([fn in atom.xtra for fn in feature_names]):
+        if ( not impute ) and ( not all([fn in atom.xtra for fn in feature_names]) ):
             # skip if atom missing any features
             continue
         
         coords.append(atom.coord)
         radii.append(atom.xtra.get("radius", D.getAtomRadius(atom)))
         features.append(list(map(F, feature_names)))
+    
     features = np.array(features)
-
     return mapPointFeaturesToMesh(mesh, coords, features, offset=radii, **kwargs)
