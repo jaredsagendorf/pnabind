@@ -6,7 +6,19 @@ from geobind.utils import generateUniformSpherePoints
 from geobind.utils import clipOutliers
 from .laplacian_smoothing import laplacianSmoothing
 
-def mapElectrostaticPotentialToMesh(mesh, phi, acc, sphere_average=True, npts=50, sphere_radius=1.0, efield=False, diff_method='symmetric_difference', h=None, laplace_smooth=False):
+PHI_COEF = [0.1421438807766923, 1.6245703034444483] # linear coefficients to scale phi
+DPH_COEF = [1.4502167585912877, -5.405648765703955] # linear coefficients to scale dphi
+
+def mapElectrostaticPotentialToMesh(mesh, phi, acc, 
+        sphere_average=True,
+        npts=50,
+        sphere_radius=1.0,
+        efield=False,
+        diff_method='symmetric_difference',
+        h=None,
+        laplace_smooth=False,
+        scale_to_tabi=False
+    ):
     
     feature_names = []
     features = []
@@ -34,9 +46,14 @@ def mapElectrostaticPotentialToMesh(mesh, phi, acc, sphere_average=True, npts=50
         phi_s = phi_s*pts_mask # masking inaccessible potential values
         phi_s = phi_s.sum(axis=1)/pts_msum # V array of averaged potential
         
-        features.append(clipOutliers(phi_s))
+        phi_array = clipOutliers(phi_s)
     else:
-        features.append(clipOutliers(phi(V)))
+        phi_array = clipOutliers(phi(V))
+    
+    if scale_to_tabi:
+        phi_array = PHI_COEF[1]*phi_array + PHI_COEF[0]
+    
+    features.append(phi_array)
     feature_names.append('averaged_potential')
     
     if efield:
@@ -69,6 +86,10 @@ def mapElectrostaticPotentialToMesh(mesh, phi, acc, sphere_average=True, npts=50
         sig = clipOutliers(sig)
         if laplace_smooth:
             sig = laplacianSmoothing(mesh, sig, iterations=2)
+        
+        if scale_to_tabi:
+            sig = DPH_COEF[1]*sig + DPH_COEF[0]
+        
         features.append(sig)
         feature_names.append('efield_projection')
     
