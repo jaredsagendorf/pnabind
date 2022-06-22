@@ -1,8 +1,14 @@
 # third party modules
 import numpy as np
 
-def balancedClassIndices(y, classes, max_percentage=1.0, shuffle=True, return_mask=True):
+def balancedClassIndices(y, classes, max_percentage=1.0, shuffle=True, return_mask=True, dtype=bool, masks=None):
     """ create a balanced index set from a vector of labels """
+    if masks is not None:
+        # mask y before getting class counts
+        y = y.copy()
+        for m in masks:
+            y[~m] = -1
+    
     idxs = []
     for c in classes:
         idxs.append(y == c)
@@ -23,7 +29,7 @@ def balancedClassIndices(y, classes, max_percentage=1.0, shuffle=True, return_ma
             np.random.shuffle(idx)
         idxs[i][idx[nb:]] = False
     
-    idxb = np.array(idxs, dtype=bool).sum(axis=0, dtype=bool) # a balanced index set
+    idxb = np.array(idxs, dtype=bool).sum(axis=0, dtype=dtype) # a balanced index set
     if return_mask:
         return idxb
     else:

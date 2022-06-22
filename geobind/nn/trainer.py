@@ -82,11 +82,21 @@ class Trainer(object):
     
    
     def train(self, nepochs, dataset,
-        validation_dataset=None, batch_loss_every=4, eval_every=2, debug=False,
-        checkpoint_every=None, optimizer_kwargs={}, scheduler_kwargs={},
-        best_state_metric=None, best_state_metric_threshold=None, 
-        best_state_metric_dataset='validation', best_state_metric_goal='max', params_to_write=None,
-        metrics_calculation="average_batches", use_mask=True
+        validation_dataset=None,
+        batch_loss_every=4,
+        eval_every=2,
+        debug=False,
+        checkpoint_every=None,
+        optimizer_kwargs={},
+        scheduler_kwargs={},
+        best_state_metric=None,
+        best_state_metric_threshold=None, 
+        best_state_metric_dataset='validation',
+        best_state_metric_goal='max',
+        params_to_write=None,
+        metrics_calculation="average_batches",
+        use_mask=True,
+        sample_ratio=1.0
     ):
         # begin training
         if not self.quiet:
@@ -117,10 +127,17 @@ class Trainer(object):
                 oom = False
                 # update the model weights
                 batch_data = processBatch(self.device, batch)
-                batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['mask']
+                batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['train_mask']
+                
+                if sample_ratio < 1.0:
+                    # sample n points from non-masked vertices
+                    mask = mask.clone()
+                    n = int((1 - sample_ratio)*mask.sum())
+                    ind = torch.arange(mask.size(0))[mask]
+                    perm = torch.randperm(ind.size(0))[:n]
+                    mask[ind[perm]] = False
                 
                 # check for OOM errors
-                loss = self.optimizer_step(batch, y, mask, **optimizer_kwargs)
                 try:
                     loss = self.optimizer_step(batch, y, mask, **optimizer_kwargs)
                 except RuntimeError as e: # out of memory
@@ -205,7 +222,7 @@ class Trainer(object):
                 fname = self.saveState(epoch, "{}.{}.tar".format(self.model_name, epoch))
                 logging.info("Writing checkpoint to file {} at epoch {}".format(fname, epoch))
         
-        self.endTraining()
+        self.endTraining(tracked_metric_name=best_state_metric)
     
     def optimizer_step(self, batch, y, mask=None, use_mask=True, use_weight=True, weight=None):
         # decide how to weight classes
@@ -283,7 +300,7 @@ class Trainer(object):
         
         return fname
     
-    def endTraining(self, message="Training Successfully Ended."):
+    def endTraining(self, message="Training Successfully Ended.", tracked_metric_name="auroc"):
         """Stuff we want to do at the end of training"""
         logging.info(message)
         
@@ -296,7 +313,7 @@ class Trainer(object):
                 state=self.best_state
             )
             logging.info("Writing best state to file {} (epoch: {})".format(fname, self.best_epoch))
-            logging.info("Best tracked metric achieved: {:.3f}".format(self.best_state_metric))
+            logging.info("Best tracked metric achieved: {:.3f} ({}, {})".format(self.best_state_metric, tracked_metric_name, self.best_epoch))
         
         # Save metrics history to file
         logging.info("Saving metrics history to file.")

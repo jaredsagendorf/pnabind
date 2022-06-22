@@ -13,7 +13,7 @@ def classWeights(data, nc, device='cpu', use_mask=True):
         ys = []
         for batch in data:
             batch_data = processBatch(device, batch)
-            y, mask = batch_data['y'], batch_data['mask'] 
+            y, mask = batch_data['y'], batch_data['train_mask']
             if use_mask :
                 y = y[mask]
             ys.append(y)

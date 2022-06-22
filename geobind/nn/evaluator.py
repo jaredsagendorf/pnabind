@@ -59,15 +59,15 @@ class Evaluator(object):
                     'matthews_corrcoef': {}
                 }
                 metrics_check = {
-                    'auroc': lambda n: (n[0] > 0) and (n[1] > 0),
-                    'auprc': lambda n: (n[0] > 0) and (n[1] > 0),
-                    'balanced_accuracy': lambda n: (n[0] > 0) and (n[1] > 0),
-                    'mean_iou': lambda n: (n[0] > 0) and (n[1] > 0),
-                    'precision': lambda n: (n[0] > 0) and (n[1] > 0),
-                    'recall': lambda n: (n[1] > 0),
-                    'accuracy': lambda n: True,
-                    'specificity': lambda n: (n[0] > 0),
-                    'matthews_corrcoef': lambda n: (n[0] > 0) and (n[1] > 0)
+                    'auroc': lambda n1, n2: (n1[0] > 0) and (n1[1] > 0),
+                    'auprc': lambda n1, n2: (n1[0] > 0) and (n1[1] > 0),
+                    'balanced_accuracy': lambda n1, n2: (n1[0] > 0) and (n1[1] > 0),
+                    'mean_iou': lambda n1, n2: (n1[0] > 0) and (n1[1] > 0),
+                    'precision': lambda n1, n2: (n1[0] > 0) and (n1[1] > 0),
+                    'recall': lambda n1, n2: (n1[1] > 0),
+                    'accuracy': lambda n1, n2: True,
+                    'specificity': lambda n1, n2: (n1[0] > 0),
+                    'matthews_corrcoef': lambda n1, n2 : (n1[0] > 0) and (n1[1] > 0) and (n2[0] > 0) and (n2[1] > 0)
                 }
             elif nc > 2:
                 # three or more classes 
@@ -117,19 +117,22 @@ class Evaluator(object):
         ):
         """Returns numpy arrays!!!"""
         
-        def _loop(batch, data_items, y_gts, y_prs, outps, masks, batches):
+        def _loop(batch, data_items, y_gts, y_prs, outps, logits, masks, batches):
             batch_data = processBatch(self.device, batch, xtras=xtras)
-            batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['mask']
-            output = self.model(batch)
+            batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['test_mask']
+            logit = self.model(batch)
             if use_mask:
                 y = y[mask].cpu().numpy()
-                out = self.post(output[mask]).cpu().numpy()
+                out = self.post(logit[mask]).cpu().numpy()
+                logit = logit[mask].cpu().numpy()
             else:
                 y = y.cpu().numpy()
-                out = self.post(output).cpu().numpy()
+                out = self.post(logit).cpu().numpy()
+                logit = logit.cpu().numpy()
             
             y_gts.append(y)
             outps.append(out)
+            logits.append(logit)
             if return_masks:
                 masks.append(mask.cpu().numpy())
             
@@ -162,6 +165,7 @@ class Evaluator(object):
         y_gts = []
         y_prs = []
         outps = []
+        logis = []
         masks = []
         batches = []
         if xtras is not None:
@@ -174,13 +178,14 @@ class Evaluator(object):
             if split_batches:
                 dl = batch.to_data_list()
                 for d in dl:
-                    _loop(d, data_items, y_gts, y_prs, outps, masks, batches)
+                    _loop(d, data_items, y_gts, y_prs, outps, logis, masks, batches)
             else:
-                _loop(batch, data_items, y_gts, y_prs, outps, masks, batches)
+                _loop(batch, data_items, y_gts, y_prs, outps, logis, masks, batches)
         
         # decide what to do with each data item
         data_items['y'] = y_gts
         data_items['output'] = outps
+        data_items['logits'] = logis
         if return_masks:
             data_items['masks'] = masks
         if return_predicted:
@@ -275,20 +280,15 @@ class Evaluator(object):
             for metric, kw in self.metrics.items():
                 if metric == 'auprc' or metric == 'auroc':
                     # AUC metrics
-                    if self.metrics_check[metric](ngt):
+                    if self.metrics_check[metric](ngt, npr):
                         metric_values[metric].append(METRICS_FN[metric](y_gt[i], outs[i], **kw))
                     else:
                         metric_values[metric].append(nan)
                 elif metric == 'smoothness':
                     # use `getGraphMetrics` for this
                     continue
-                elif metric == "matthews_corrcoef":
-                    if self.metrics_check[metric](npr):
-                        metric_values[metric].append(METRICS_FN[metric](y_gt[i], y_pr, **kw))
-                    else:
-                        metric_values[metric].append(nan)
                 else:
-                    if self.metrics_check[metric](ngt):
+                    if self.metrics_check[metric](ngt, npr):
                         metric_values[metric].append(METRICS_FN[metric](y_gt[i], y_pr, **kw))
                     else:
                         metric_values[metric].append(nan)

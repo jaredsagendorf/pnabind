@@ -120,45 +120,64 @@ class ClassificationDatasetMemory(InMemoryDataset):
             dump(scaler, open(self.processed_paths[1], "wb"))
 
 def _processData(data_files, nc, labels_key, 
-        balance="unmasked",
-        remove_mask=False,
-        unmasked_class=0,
+        balance="all",
+        max_percentage=1.0,
         scaler=None,
         scale=True,
         transform=None,
         pre_filter=None,
         pre_transform=None,
         feature_mask=None,
-        label_type="vertex"
+        label_type="vertex",
+        train_mask_keys=None,
+        test_mask_keys=None,
+        use_masks=True
     ):
+    # set up defaults
+    if train_mask_keys is None:
+        train_mask_keys = []
+    if test_mask_keys is None:
+        test_mask_keys = []
+    
+    # array to store data objects
     data_list = []
     
     # read and process datafiles
     for f in data_files:
         data_arrays = np.load(f)
         
-        Y = data_arrays[labels_key]
-        if label_type == "vertex":
-            if remove_mask:
-                # remove any previous masking
-                Y[(Y == -1)] = unmasked_class
-            
-            if balance == 'balanced':
-                idxb = balancedClassIndices(data_arrays[labels_key], range(nc), max_percentage=self.percentage)
-            elif balance == 'unmasked':
-                idxb = (data_arrays[labels_key] >= 0)
-            elif balance == 'all':
-                idxb = (data_arrays[labels_key] == data_arrays[labels_key])
-            else:
-                raise ValueError("Unrecognized value for `balance` keyword: {}".format(balance))
-        else:
-            idxb = np.ones(len(data_arrays['X']), dtype=np.int32)
-        
+        # feature array
         if feature_mask is not None:
             X = data_arrays['X'][:, feature_mask]
         else:
             X = data_arrays['X']
         
+        Y = data_arrays[labels_key]
+        if use_masks:
+            # construct training mask
+            tr_masks = [data_arrays[k] for k in train_mask_keys]
+            if label_type == "vertex":
+                if balance == 'balanced':
+                    mask_b = balancedClassIndices(Y, range(nc), max_percentage=max_percentage, masks=tr_masks)
+                elif balance == 'all':
+                    mask_b = (Y == Y)
+                else:
+                    raise ValueError("Unrecognized value for `balance` keyword: {}".format(balance))
+            else:
+                mask_b = np.ones(len(X), dtype=bool)
+            tr_masks += [mask_b]
+            tr_masks = np.vstack(tr_masks).prod(axis=0)
+            
+            # construct testing mask
+            if test_mask_keys == "same":
+                te_masks = tr_masks
+            else:
+                te_masks = [data_arrays[k] for k in test_mask_keys]
+                if len(te_masks) == 0:
+                    te_masks = [np.ones(len(X), dtype=bool)]
+                te_masks = np.vstack(te_masks).prod(axis=0)
+        
+        # construct data object
         data = Data(
             x=torch.tensor(X, dtype=torch.float32),
             y=torch.tensor(Y, dtype=torch.int64),
@@ -168,7 +187,10 @@ def _processData(data_files, nc, labels_key,
             edge_attr=None,
             edge_index=None
         )
-        data.mask = torch.tensor(idxb, dtype=torch.bool)
+        if use_masks:
+            data.train_mask = torch.tensor(tr_masks, dtype=torch.bool)
+            data.test_mask = torch.tensor(te_masks, dtype=torch.bool)
+        
         data_list.append(data)
     
     # filter data
@@ -185,7 +207,7 @@ def _processData(data_files, nc, labels_key,
         if scaler is None:
             scaler = NodeScaler()
             for data in data_list:
-                scaler.update(data.x[data.mask])
+                scaler.update(data.x[data.train_mask])
             scaler.fit()
             scaler = scaler.scaler
         
