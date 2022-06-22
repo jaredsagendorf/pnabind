@@ -13,8 +13,11 @@ Copyright 2013,  Mindboggle team (http://mindboggle.info), Apache v2.0 License
 
 """
 
-def meshDescriptors(points, faces, order=10, scale_input=True, center_input=True, zernike_descriptors=True, geometric_moment_invariants=True):
-    from .pipelines import DefaultPipeline as Pipeline
+def meshDescriptors(points, faces, order=10, scale_input=True, center_input=True, zernike_descriptors=True, geometric_moment_invariants=True, parallel=False):
+    if parallel:
+        from .pipelines import DefaultSerialPipeline as Pipeline
+    else:
+        from .pipelines import DefaultParallelPipeline as Pipeline
     
     if center_input:
         center = np.mean(points, axis=0)

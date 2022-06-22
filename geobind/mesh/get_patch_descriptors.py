@@ -1,4 +1,5 @@
 import warnings
+import multiprocessing as mp
 
 # third party modules
 import numpy as np
@@ -9,7 +10,7 @@ from .laplacian_smoothing import laplacianSmoothing
 from .map_point_features_to_mesh import mapPointFeaturesToMesh
 
 class MeshDescriptor(object):
-    def __init__(self, mesh=None, patches=None, n_max=8, l_max=10, center_patches=True, scale_patches=True):
+    def __init__(self, mesh=None, patches=None, n_max=8, l_max=10, center_patches=True, scale_patches=True, nprocs=None):
         # given data members
         self.mesh = mesh
         self.patches = patches
@@ -17,6 +18,7 @@ class MeshDescriptor(object):
         self.l_max = l_max
         self.scale_patches = scale_patches
         self.center_patches = center_patches
+        self.parallel = (nprocs is not None)
         
         # derived data members
         if mesh is not None:
@@ -64,7 +66,7 @@ class MeshDescriptor(object):
             # use given patch
             vertices, faces = patch.vertices, patch.faces
         
-        descriptors, = meshDescriptors(vertices, faces, order=self.n_max, scale_input=False, center_input=False, geometric_moment_invariants=False)
+        descriptors, = meshDescriptors(vertices, faces, order=self.n_max, scale_input=False, center_input=False, geometric_moment_invariants=False, parallel=self.parallel)
         
         return descriptors[self.descriptor_mask]
 
@@ -90,11 +92,11 @@ def getRadialGeodesicPatches(mesh, radius, add_self_loops=True, to_csr=False):
     
     return patches
 
-def getPatchDescriptors(mesh, radius=15.0, n_max=20, l_max=10, feature_name='zd', sample_ratio=1.0):
+def getPatchDescriptors(mesh, radius=15.0, n_max=20, l_max=10, feature_name='zd', sample_ratio=1.0, nprocs=None):
     
     patches = getRadialGeodesicPatches(mesh, radius, add_self_loops=True, to_csr=True)
     
-    M = MeshDescriptor(mesh, patches, n_max=n_max, l_max=l_max, scale_patches=True, center_patches=True)
+    M = MeshDescriptor(mesh, patches, n_max=n_max, l_max=l_max, scale_patches=True, center_patches=True, nprocs=nprocs)
     
     if sample_ratio < 1.0:
         # use fps centroids as patch loci
@@ -103,18 +105,30 @@ def getPatchDescriptors(mesh, radius=15.0, n_max=20, l_max=10, feature_name='zd'
         
         idx = fps(torch.tensor(mesh.vertices), batch=None, ratio=sample_ratio, random_start=False)
         idx = idx.numpy()
-        descriptors = []
-        for i in idx:
-            descriptors.append( M.getPatchDescriptors(i) )
+        if nprocs is None:
+            descriptors = []
+            for i in idx:
+                descriptors.append( M.getPatchDescriptors(i) )
+        else:
+            pool = mp.Pool(nprocs)
+            descriptors = pool.map(M.getPatchDescriptors, idx)
+            pool.close()
+            pool.join()
         descriptors = np.array(descriptors)
         
         # map to all vertices
         descriptors = mapPointFeaturesToMesh(mesh, mesh.vertices[idx], descriptors, map_to='nearest')
     else:
         # loop over vertices, compute moments for every patch
-        descriptors = []
-        for i in range(M.Nv):
-            descriptors.append( M.getPatchDescriptors(i) )
+        if nprocs is None:
+            descriptors = []
+            for i in range(M.Nv):
+                descriptors.append( M.getPatchDescriptors(i) )
+        else:
+            pool = mp.Pool(nprocs)
+            descriptors = pool.map(M.getPatchDescriptors, list(range(M.Nv)))
+            pool.close()
+            pool.join()
         descriptors = np.array(descriptors)
     
     # add features to mesh

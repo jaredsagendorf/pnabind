@@ -366,9 +366,6 @@ class KoehlMultiproc(KoehlOptimizations):
         return self.factorial_scalar(N) * moments_array
 
 #DefaultPipeline = type('DefaultPipeline', (SerialPipeline,), {})
-
 #DefaultPipeline = type('DefaultPipeline', (NumpyOptimizations, MultiprocPipeline,), {})
-
-#DefaultPipeline = type('DefaultPipeline', (KoehlOptimizations, SerialPipeline), {})
-
-DefaultPipeline = type('DefaultPipeline', (KoehlMultiproc, SerialPipeline), {})
+DefaultSerialPipeline = type('DefaultSerialPipeline', (KoehlOptimizations, SerialPipeline), {})
+DefaultParallelPipeline = type('DefaultParallelPipeline', (KoehlMultiproc, SerialPipeline), {})
