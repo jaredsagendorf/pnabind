@@ -25,7 +25,7 @@ def wfn(dist, cutoff, offset=0, weight_method='inverse_distance', minw=0.5, maxw
     else:
         raise ValueError("Unknown value of argument `weight_method`: {}".format(weight_method))
 
-def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=None, map_to='neighborhood', weight_method='inverse_distance', clip_values=False, laplace_smooth=False, **kwargs):
+def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=None, map_to='neighborhood', weight_method='inverse_distance', laplace_smooth=False, clip_values=False, iterations=1, **kwargs):
     
     if clip_values:
         features = clipOutliers(features, axis=0)
@@ -75,6 +75,6 @@ def mapPointFeaturesToMesh(mesh, points, features, distance_cutoff=3.0, offset=N
         raise ValueError("Unknown value of argument `map_to`: {}".format(map_to))
     
     if laplace_smooth:
-        X = laplacianSmoothing(mesh, X)
+        X = laplacianSmoothing(mesh, X, iterations=iterations)
     
     return X
