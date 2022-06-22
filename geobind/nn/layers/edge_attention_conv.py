@@ -9,35 +9,7 @@ from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.typing import Adj, OptTensor, PairOptTensor, PairTensor
 from torch_geometric.utils import add_self_loops, remove_self_loops
 from torch_geometric.nn.inits import reset
-from torch_geometric.utils import softmax, geodesic_distance
-
-def get_angle(v1: Tensor, v2: Tensor) -> Tensor:
-    return torch.atan2(
-        torch.cross(v1, v2, dim=1).norm(p=2, dim=1), (v1 * v2).sum(dim=1))
-
-def edge_pair_features(
-        edge_index: Tensor,
-        pos: Tensor,
-        normal: Tensor,
-        faces: Optional[Tensor] = None,
-        normalize_gd: bool = True
-    ) -> Tensor:
-    
-    pseudo = pos[edge_index[0]] - pos[edge_index[1]]
-    
-    features = [
-        pseudo.norm(p=2, dim=1),
-        get_angle(normal[edge_index[1]], pseudo),
-        get_angle(normal[edge_index[0]], pseudo),
-        get_angle(normal[edge_index[1]], normal[edge_index[0]])
-    ]
-    if faces is not None:
-        g = geodesic_distance(pos, faces, src=edge_index[0], dest=edge_index[1], norm=False, num_workers=0)
-        if normalize_gd:
-            g = (g + 1e-8)/(features[0] + 1e-8)
-        features.append(g)
-    
-    return torch.stack(features, dim=1)
+from torch_geometric.utils import softmax
 
 class EdgeAttentionConv(MessagePassing):
     r"""An edge-attention convolution based on the The PPFNet operator from the `"PPFNet: Global Context Aware Local
@@ -90,14 +62,9 @@ class EdgeAttentionConv(MessagePassing):
             gate_nn: Callable, 
             local_nn: Optional[Callable] = None,
             global_nn: Optional[Callable] = None,
-            edge_bn: Optional[Callable] = None,
-            add_self_loops: bool = False, 
-            attention_type: str = "local",
-            combine_vertex_features: str = "cat",
-            weighted_average: bool = False,
-            use_geodesic_distance: bool = False,
-            normalize_gd: bool = True,
-            use_edge_features=True,
+            add_self_loops: bool = False,
+            attention_type: str = "softmax",
+            average_heads: bool = False,
             **kwargs
         ):
         kwargs.setdefault('aggr', 'add')
@@ -106,26 +73,9 @@ class EdgeAttentionConv(MessagePassing):
         self.gate_nn = gate_nn
         self.local_nn = local_nn
         self.global_nn = global_nn
-        self.edge_bn = edge_bn
         self.add_self_loops = add_self_loops
         self.attention_type = attention_type
-        self.weighted_average = weighted_average
-        self.use_geodesic_distance = use_geodesic_distance
-        self.combine_vertex_features = combine_vertex_features
-        self.normalize_gd = normalize_gd
-        self.use_edge_features = use_edge_features
-        if weighted_average:
-            assert attention_type == "local", "weighted average can only be used with local attention!"
-        
-        # how to construct edge message
-        if self.combine_vertex_features == "cat":
-            self.msg_fn = lambda xi, xj, eij: torch.cat([xi, xj], dim=1) if eij is None else torch.cat([xi, xj, eij], dim=1)
-        elif self.combine_vertex_features == "diff":
-            self.msg_fn = lambda xi, xj, eij: xj - xi if eij is None else torch.cat([xj - xi, eij], dim=1)
-        elif self.combine_vertex_features == "abs_diff":
-            self.msg_fn = lambda xi, xj, eij: torch.abs(xj - xi) if eij is None else torch.cat([torch.abs(xj - xi), eij], dim=1)
-        elif self.combine_vertex_features == "mean":
-            self.msg_fn = lambda xi, xj, eij: (xi + xj)/2 if eij is None else torch.cat([(xi + xj)/2, eij], dim=1)
+        self.average_heads = average_heads
         
         self.reset_parameters()
     
@@ -137,10 +87,8 @@ class EdgeAttentionConv(MessagePassing):
     def forward(
         self,
         x: Union[Tensor, PairTensor],
-        pos: Union[Tensor, PairTensor],
-        normal: Union[Tensor, PairTensor],
-        edge_index: Adj, 
-        faces: Optional[Tensor] = None,
+        edge_index: Adj,
+        edge_attr: Tensor,
         size: Optional[int] = None
     ) -> Tensor:
         """"""
@@ -156,24 +104,10 @@ class EdgeAttentionConv(MessagePassing):
             elif isinstance(edge_index, SparseTensor):
                 edge_index = set_diag(edge_index)
         
-        if self.use_edge_features:
-            # get edge features
-            if self.use_geodesic_distance:
-                edge_attr = edge_pair_features(edge_index, pos, normal, faces=faces, normalize_gd=self.normalize_gd)
-            else:
-                edge_attr = edge_pair_features(edge_index, pos, normal)
-            if self.edge_bn is not None:
-                edge_attr = self.edge_bn(edge_attr)
-        else:
-            edge_attr = None
-        
         # do message-passing
-        out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=None)
-        if self.weighted_average:
-            out = out[:,:-1] / (out[:,-1].view(-1, 1) + 1e-8)
+        out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=size)
         
         if self.global_nn is not None:
-            #out = self.global_nn(torch.cat([x[0], out], dim=1))
             out = self.global_nn(out)
         
         return out
@@ -181,34 +115,33 @@ class EdgeAttentionConv(MessagePassing):
     def message(self, 
             x_i: Tensor,
             x_j: Tensor,
-            index: Tensor,
-            edge_attr: Optional[Tensor] = None
+            edge_attr: Tensor,
+            index: Tensor
         ) -> Tensor:
         
-        # construct edge message
-        msg = self.msg_fn(x_i, x_j, edge_attr)
-        gate = self.gate_nn(msg)
+        # get attention
+        gate = self.gate_nn(edge_attr)
         if gate.dim() == 1:
-            gate = gate.view(-1,1)
-        assert gate.dim() == msg.dim() and gate.size(0) == msg.size(0)
+            gate = gate.view(-1, 1)
         
-        # apply activation
-        if self.attention_type == "global":
-            gate = softmax(gate, index)
-        elif self.attention_type == "local":
-            gate = F.hardsigmoid(gate)
+        if self.attention_type == "softmax":
+            gate = softmax(gate, index=index)
+        elif self.attention_type == "sigmoid":
+            gate = F.sigmoid(gate)
+        
+        if self.average_heads:
+             gate = gate.mean(dim=1).view(-1, 1)
         
         # update message
         if self.local_nn is not None:
             msg = self.local_nn(x_j)
         else:
             msg = x_j
-        msg = gate * msg
+        (E, F), H = msg.size(), gate.size(1)
         
-        if self.weighted_average:
-            return torch.cat([msg, gate], dim=1)
-        else:
-            return msg
+        msg = msg.view(E, F, 1)*gate.view(E, 1, H)
+        
+        return msg.view(E, F*H)
     
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}(gate_nn={self.gate_nn}, '

@@ -26,10 +26,11 @@ class LocalAttentionPooling(torch.nn.Module):
             before combining them with the attention scores, *e.g.*, defined by
             :class:`torch.nn.Sequential`. (default: :obj:`None`)
     """
-    def __init__(self, gate_nn, nn=None):
+    def __init__(self, gate_nn, nn=None, normalize=True):
         super(LocalAttentionPooling, self).__init__()
         self.gate_nn = gate_nn
         self.nn = nn
+        self.normalize = normalize
         
         self.reset_parameters()
     
@@ -37,7 +38,7 @@ class LocalAttentionPooling(torch.nn.Module):
         reset(self.gate_nn)
         reset(self.nn)
     
-    def forward(self, x, batch, size=None):
+    def forward(self, x, batch, size=None, return_attn=False):
         """"""
         x = x.unsqueeze(-1) if x.dim() == 1 else x
         size = batch[-1].item() + 1 if size is None else size
@@ -47,9 +48,14 @@ class LocalAttentionPooling(torch.nn.Module):
         assert gate.dim() == x.dim() and gate.size(0) == x.size(0)
         
         gate = torch.sigmoid(gate)
-        out = scatter_add(gate * x, batch, dim=0, dim_size=size)/(scatter_add(gate, batch, dim=0, dim_size=size) + 1e-5)
+        out = scatter_add(gate * x, batch, dim=0, dim_size=size)
+        if self.normalize:
+            out = out / (scatter_add(gate, batch, dim=0, dim_size=size) + 1e-8)
         
-        return out
+        if return_attn:
+            return out, gate
+        else:
+            return out
 
 
     def __repr__(self):

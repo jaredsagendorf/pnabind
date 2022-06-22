@@ -1,11 +1,20 @@
-from torch.nn import ReLU, ELU, Identity, Tanh, Dropout, PReLU
+from torch.nn import ReLU, ELU, Identity, Tanh, Dropout, PReLU, GELU
+try:
+    from torch.nn import SiLU
+except ImportError:
+    pass
 from torch.nn import Sequential as Seq, Linear as Lin, BatchNorm1d as BN
 
 def MLP(channels, batch_norm=True, act='relu', bn_kwargs={}, dropout=0.0, dropout_position="right", batchnorm_position="right", bias=True):
+    if isinstance(dropout, list):
+        using_dropout = sum(dropout)
+    else:
+        using_dropout = dropout
+    
     if batch_norm:
         # bad practice to mix these two
-        assert dropout == 0.0
-    if dropout > 0.0:
+        assert using_dropout == 0.0
+    if using_dropout > 0.0:
         # bad practice to mix these two
         assert not batch_norm
     
@@ -30,6 +39,10 @@ def MLP(channels, batch_norm=True, act='relu', bn_kwargs={}, dropout=0.0, dropou
             activation.append(Tanh)
         elif a == "prelu":
             activation.append(PReLU)
+        elif a == 'gelu':
+            activation.append(GELU)
+        elif a == 'silu':
+            activation.append(SiLU)
         else:
             raise ValueError("unrecognized keyword: {}".format(act))
     

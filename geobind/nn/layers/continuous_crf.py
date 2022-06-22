@@ -7,17 +7,17 @@ from torch import nn
 from torch_geometric.nn import MessagePassing
 
 class ContinuousCRF(MessagePassing):
-    def __init__(self, alpha=None, beta=None, niter=4, eps=1e-6, gij=None): 
+    def __init__(self, alpha=None, beta=None, niter=4, eps=1e-8, gij=None): 
         super(ContinuousCRF, self).__init__(aggr='add')
         if alpha is None:
             # treat as a learnable parameter
-            self.log_alpha = nn.Parameter(torch.rand(1), requires_grad=True)
+            self.log_alpha = nn.Parameter(torch.tensor(0, dtype=torch.float32), requires_grad=True)
         else:
             # use a fixed scalar
             self.log_alpha = torch.log(torch.tensor(alpha, requires_grad=False))
         
         if beta is None:
-            self.log_beta = nn.Parameter(torch.rand(1), requires_grad=True)
+            self.log_beta = nn.Parameter(torch.tensor(0, dtype=torch.float32), requires_grad=True)
         else:
             # use a fixed scalar
             self.log_beta = torch.log(torch.tensor(beta, requires_grad=False))
@@ -34,7 +34,7 @@ class ContinuousCRF(MessagePassing):
             self.gij = gij
         self.batch_gij = None # cache the value of gij to avoid repeated computations during iterations
     
-    def forward(self, x, edge_index):                    
+    def forward(self, x, edge_index):
         b = x.clone() # original features
         for k in range(self.niter):
             x = self.propagate(edge_index, size=(x.size(0), x.size(0)), x=x, b=b)
