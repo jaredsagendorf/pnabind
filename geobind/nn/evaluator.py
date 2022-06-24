@@ -9,7 +9,7 @@ import numpy as np
 from geobind.nn import processBatch
 from geobind.nn.metrics import auroc, auprc, balanced_accuracy_score, recall_score, brier_score_loss, specificity
 from geobind.nn.metrics import precision_score, jaccard_score, f1_score, accuracy_score, matthews_corrcoef
-from geobind.nn.metrics import reportMetrics, chooseBinaryThreshold, meshLabelSmoothness
+from geobind.nn.metrics import reportMetrics, chooseBinaryThreshold#, meshLabelSmoothness
 
 METRICS_FN = {
     'accuracy': accuracy_score,
@@ -22,7 +22,7 @@ METRICS_FN = {
     'f1_score': f1_score,
     'brier_score': brier_score_loss,
     'matthews_corrcoef': matthews_corrcoef,
-    'smoothness': meshLabelSmoothness,
+    #'smoothness': meshLabelSmoothness,
     'specificity': specificity
 }
 
@@ -34,6 +34,7 @@ class Evaluator(object):
         self.model = model # must implement the 'forward' method
         self.device = device
         self.negative_class = negative_class
+        self.nc = nc
         
         if post_process is None:
             # identity function
@@ -75,13 +76,11 @@ class Evaluator(object):
                     labels = list(range(nc))
                     labels.remove(negative_class)
                 metrics={
-                    #'balanced_accuracy': {},
-                    #'matthews_corrcoef': {},
+                    'matthews_corrcoef': {},
                     'mean_iou': {'average': 'macro', 'labels': labels, 'zero_division': 0},
                     'precision': {'average': 'macro', 'zero_division': 0, 'labels': labels},
                     'recall': {'average': 'macro', 'zero_division': 0, 'labels': labels},
                     'accuracy': {},
-                    #'auroc': {'average': 'macro'},
                 }
                 metrics_check = {
                     'auroc': None,
@@ -93,9 +92,6 @@ class Evaluator(object):
                     'accuracy': None,
                     'specificity': None
                 }
-            else:
-                # TODO - assume regression
-                pass
             self.metrics = metrics
             self.metrics_check = metrics_check
         else:
@@ -106,154 +102,122 @@ class Evaluator(object):
     @torch.no_grad()
     def eval(self, dataset, 
             eval_mode=True,
-            batchwise=False,
-            use_mask=True,
-            return_masks=False,
-            return_predicted=False,
-            return_batches=True,
+            return_masks=True,
+            return_batches=False,
             xtras=None,
             split_batches=False,
+            forward_kwargs={},
             **kwargs
         ):
         """Returns numpy arrays!!!"""
-        
-        def _loop(batch, data_items, y_gts, y_prs, outps, logits, masks, batches):
+       
+        def _to_array(data):
+            if isinstance(data, tuple):
+                return tuple([d.cpu().numpy() for d in data])
+            else:
+                return data.cpu().numpy()
+            
+        def _loop(batch, return_mask=True, return_batch=False, xtras=None, **kwargs):
             batch_data = processBatch(self.device, batch, xtras=xtras)
             batch, y, mask = batch_data['batch'], batch_data['y'], batch_data['test_mask']
-            logit = self.model(batch)
-            if use_mask:
-                y = y[mask].cpu().numpy()
-                out = self.post(logit[mask]).cpu().numpy()
-                logit = logit[mask].cpu().numpy()
-            else:
-                y = y.cpu().numpy()
-                out = self.post(logit).cpu().numpy()
-                logit = logit.cpu().numpy()
+            output = self.model(batch, **kwargs)
             
-            y_gts.append(y)
-            outps.append(out)
-            logits.append(logit)
+            return_data = {}
+            return_data['output'] = _to_array(output) # array or tuple
+            return_data['y'] = y.cpu().numpy()
             if return_masks:
-                masks.append(mask.cpu().numpy())
+                return_data['mask'] = mask.cpu().numpy()
             
-            if return_predicted:
-                y_prs.append(self.predictClass(out, y, **kwargs))
+            if return_batch:
+                return_data['batch'] = batch.to('cpu')
             
             if xtras is not None:
-                # these items will not be masked even if `use_mask == True`
                 for item in xtras:
-                    data_items[item].append(batch_data[item].cpu().numpy())
+                    return_data[item] = batch_data[item].cpu().numpy()
             
-            if return_batches:
-                if isinstance(batch, list):
-                    if batchwise:
-                        batches.append(batch)
-                    else:    
-                        batches += batch
-                else:
-                    if batchwise:
-                        batches.append([batch])
-                    else:
-                        batches.append(batch.to('cpu'))
+            return return_data
         
         # eval or training
         if eval_mode:
             self.model.eval()
         
         # evaluate model on given dataset
-        data_items = {}
-        y_gts = []
-        y_prs = []
-        outps = []
-        logis = []
-        masks = []
-        batches = []
-        if xtras is not None:
-            # these items will not be masked even if `use_mask == True`
-            for item in xtras:
-                data_items[item] = []
-        
-        # loop over dataset
+        data_items = []
         for batch in dataset:
             if split_batches:
                 dl = batch.to_data_list()
                 for d in dl:
-                    _loop(d, data_items, y_gts, y_prs, outps, logis, masks, batches)
+                    data_items.append(_loop(d, return_mask=return_masks, return_batch=return_batches, xtras=xtras, **forward_kwargs))
             else:
-                _loop(batch, data_items, y_gts, y_prs, outps, logis, masks, batches)
-        
-        # decide what to do with each data item
-        data_items['y'] = y_gts
-        data_items['output'] = outps
-        data_items['logits'] = logis
-        if return_masks:
-            data_items['masks'] = masks
-        if return_predicted:
-            data_items['predicted_y'] = y_prs
-        
-        # concat batches if not batchwise
-        if batchwise:
-            data_items['num_batches'] = len(y_gts)
-        else:
-            for item in data_items:
-                data_items[item] = np.concatenate(data_items[item], axis=0)
-            data_items['num'] = len(data_items['y'])
-        
-        # add batches if requested
-        if return_batches:
-            data_items['batches'] = batches
+                data_items.append(_loop(batch, return_mask=return_masks, return_batch=return_batches, xtras=xtras, **forward_kwargs))
         
         return data_items
     
     def getMetrics(self, *args, 
-            eval_mode=True, 
+            eval_mode=True,
             metric_values=None, 
             threshold=None, 
-            threshold_metric='balanced_accuracy', 
-            report_threshold=False,
-            metrics_calculation="total",
+            threshold_metric='balanced_accuracy',
+            report_threshold=True,
+            metrics_calculation="macro",
             split_batches=False,
-            use_mask=True,
+            use_masks=True,
             label_type="vertex",
+            report_statistic="mean",
             **kwargs
         ):
-        if self.metrics is None:
-            return {}
+        
+        # Set up various metric criteria
         if metric_values is None:
+            if self.metrics is None:
+                # no information given on what metrics to calculate
+                return {}
             metric_values = {key: [] for key in self.metrics}
         if 'threshold' in metric_values:
             threshold = metric_values['threshold']
         
-        if metrics_calculation == "total":
+        if metrics_calculation == "macro":
+            # flatten all batches into single array
             batchwise = False
-        elif metrics_calculation == "average_batches":
+            split_batches = False
+        elif metrics_calculation == "micro":
+            # compute average over batches
             batchwise = True
         else:
             raise ValueError("Invalid option for `metrics_calculation`: {}".format(metrics_calculation))
         
         # Determine what we were given (a dataset or labels/predictions)
         if len(args) == 1:
-            evald = self.eval(args[0], eval_mode=eval_mode, use_mask=False, return_masks=True, return_batches=True, batchwise=batchwise, split_batches=split_batches, **kwargs)
-            if batchwise:
-                y_gt = evald['y']
-                outs = evald['output']
-                batches = evald['batches']
-                masks = evald['masks']
+            if isinstance(args[0], list):
+                data_items = args[0]
             else:
-                y_gt = [evald['y']]
-                outs = [evald['output']]
-                batches = [evald['batches']]
-                masks = [evald['masks']]
+                # assume we were passed a dataloader object
+                DL = args[0]
+                data_items = self.eval(DL, eval_mode=eval_mode, return_masks=use_masks, return_batches=False, split_batches=split_batches, **kwargs)
+            
+            # extract arrays from data items
+            if use_masks:
+                y_gt = [d['y'][d['mask']] for d in data_items]
+                outs = [self.post(d['output'][d['mask']]) for d in data_items]
+            else:
+                y_gt = [d['y'] for d in data_items]
+                outs = [self.post(d['output']) for d in data_items]
+            
+            if not batchwise:
+                # flatten everything into single array
+                y_gt = [np.concatenate(y_gt)]
+                outs = [np.concatenate(outs)]
         else:
-            if len(args) == 3:
-                y_gt, outs, masks = args
-                batches = None
-            else:
-                y_gt, outs, masks, batches = args
-                batches = [batches]
-            y_gt = [y_gt]
-            outs = [outs]
-            masks = [masks]
+            y_gt, outs = args
+            # make sure we have list of arrays
+            if not isinstance(y_gt, list):
+                y_gt = [y_gt]
+            if not isinstance(outs, list):
+                outs = [outs]
+        
+        # Check if threshold was set
+        if threshold is None:
+            threshold, _ = chooseBinaryThreshold(y_gt, outs, METRICS_FN[threshold_metric], **self.metrics[threshold_metric])
         
         # Get predicted class labels
         nan = float('nan')
@@ -262,21 +226,13 @@ class Evaluator(object):
                 y_gt[i] = y_gt[i].flatten()
             y_pr = self.predictClass(outs[i], y_gt[i], metric_values, threshold=threshold, threshold_metric=threshold_metric, report_threshold=report_threshold)
             
-            #if batches is not None:
-                #y_gt[~masks] = self.negative_class
-                #self.getGraphMetrics(batches[i], y_gt[i], y_pr, metric_values)
-            
-            if masks is not None and use_mask:    
-                y_gt[i] = y_gt[i][masks[i]]
-                y_pr = y_pr[masks[i]]
-                outs[i] = outs[i][masks[i]]
-            
             # Compute metrics
-            ngt = np.bincount(y_gt[i], minlength=2)
-            npr = np.bincount(y_pr, minlength=2)
+            ngt = np.bincount(y_gt[i], minlength=self.nc)
+            npr = np.bincount(y_pr, minlength=self.nc)
             if self.nc > 2:
                 y_gt[i] = np.eye(self.nc)[y_gt[i]]
                 y_pr = np.eye(self.nc)[y_pr]
+            
             for metric, kw in self.metrics.items():
                 if metric == 'auprc' or metric == 'auroc':
                     # AUC metrics
@@ -284,61 +240,69 @@ class Evaluator(object):
                         metric_values[metric].append(METRICS_FN[metric](y_gt[i], outs[i], **kw))
                     else:
                         metric_values[metric].append(nan)
-                elif metric == 'smoothness':
-                    # use `getGraphMetrics` for this
-                    continue
                 else:
                     if self.metrics_check[metric](ngt, npr):
                         metric_values[metric].append(METRICS_FN[metric](y_gt[i], y_pr, **kw))
                     else:
                         metric_values[metric].append(nan)
-        with warnings.catch_warnings():
-            # ignore empty-slice warnings from numpy
-            warnings.simplefilter("ignore")
-            for key in metric_values:
-                metric_values[key] = np.nanmean(metric_values[key])
+        
+        # Determine how aggregate metrics values
+        if report_statistic is not None:
+            with warnings.catch_warnings():
+                # ignore empty-slice warnings from numpy
+                warnings.simplefilter("ignore")
+                for key in metric_values:
+                    if report_statistic == "mean":
+                        metric_values[key] = np.nanmean(metric_values[key])
+                    elif report_statistic == "max":
+                        metric_values[key] = np.nanmax(metric_values[key])
+                    elif report_statistic == "min":
+                        metric_values[key] = np.nanmin(metric_values[key])
+                    elif report_statistic == "median":
+                        metric_values[key] = np.nanmedian(metric_values[key])
         
         return metric_values
     
-    def getGraphMetrics(self, batches, y_gt, y_pr, metric_values=None):
-        if self.metrics is None:
-            return {}
-        if metric_values is None:
-            metric_values = {}
-        
-        smooth_gt = []
-        smooth_pr = []
-        ptr = 0
-        if not isinstance(batches, list):
-            batches = [batches]
-        for batch in batches:
-            edge_index = batch.edge_index.cpu().numpy()
-            slc = slice(ptr, ptr + batch.num_nodes)
-            if "smoothness" in self.metrics:
-                smooth_gt.append(METRICS_FN["smoothness"](y_gt[slc], edge_index, **self.metrics['smoothness']))
-                smooth_pr.append(METRICS_FN["smoothness"](y_pr[slc], edge_index, **self.metrics['smoothness']))
-            ptr += batch.num_nodes
-        
-        if "smoothness" in self.metrics:
-            smooth_pr = np.mean(smooth_pr)
-            smooth_gt = np.mean(smooth_gt)
-            metric_values['smoothness'].append(smooth_pr)
-            metric_values['smoothness_relative'].append((smooth_pr - smooth_gt)/smooth_gt)
-        
-        return metric_values
-    
-    def predictClass(self, outs, y_gt=None, metrics_dict=None, threshold=None, threshold_metric='balanced_accuracy', report_threshold=False):
+    def predictClass(self, p, y_gt=None, metrics_dict=None, threshold=None, threshold_metric='balanced_accuracy', report_threshold=False):
         # Decide how to determine `y_pr` from `outs`
         if self.nc == 2:
             if (threshold is None) and (y_gt is not None):
                 # sample n_samples threshold values
-                threshold, _  = chooseBinaryThreshold(y_gt, outs[:,1], metric_fn=METRICS_FN[threshold_metric], **self.metrics[threshold_metric])
+                threshold, _  = chooseBinaryThreshold(y_gt, p[:,1], METRICS_FN[threshold_metric], **self.metrics[threshold_metric])
             elif (threshold is None) and (y_gt is None):
                 threshold = 0.5
-            y_pr = (outs[:,1] >= threshold)
+            y_pr = (p[:,1] >= threshold)
+            
             if report_threshold and (metrics_dict is not None):
                 metrics_dict['threshold'] = threshold
         elif self.nc > 2:
-            y_pr = np.argmax(outs, axis=1).flatten()
+            y_pr = np.argmax(p, axis=1).flatten()
         
         return y_pr
+    
+    # def getGraphMetrics(self, batches, y_gt, y_pr, metric_values=None):
+        # if self.metrics is None:
+            # return {}
+        # if metric_values is None:
+            # metric_values = {}
+        
+        # smooth_gt = []
+        # smooth_pr = []
+        # ptr = 0
+        # if not isinstance(batches, list):
+            # batches = [batches]
+        # for batch in batches:
+            # edge_index = batch.edge_index.cpu().numpy()
+            # slc = slice(ptr, ptr + batch.num_nodes)
+            # if "smoothness" in self.metrics:
+                # smooth_gt.append(METRICS_FN["smoothness"](y_gt[slc], edge_index, **self.metrics['smoothness']))
+                # smooth_pr.append(METRICS_FN["smoothness"](y_pr[slc], edge_index, **self.metrics['smoothness']))
+            # ptr += batch.num_nodes
+        
+        # if "smoothness" in self.metrics:
+            # smooth_pr = np.mean(smooth_pr)
+            # smooth_gt = np.mean(smooth_gt)
+            # metric_values['smoothness'].append(smooth_pr)
+            # metric_values['smoothness_relative'].append((smooth_pr - smooth_gt)/smooth_gt)
+        
+        # return metric_values

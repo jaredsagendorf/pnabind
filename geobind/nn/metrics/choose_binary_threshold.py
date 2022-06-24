@@ -31,19 +31,25 @@ def chooseBinaryThreshold(y_gt, probs, metric_fn,
     for i in range(len(y_gt)):
         y = y_gt[i]
         p = probs[i]
+        if p.ndim == 2:
+            p = p[:,1]
         values.append(np.array(list(map(m, thresholds))))
     values = np.array(values).reshape(len(y_gt), len(thresholds))
     
     # decide what to optimize
     if optimize == "batch_mean":
-        values = values.mean(axis=0)
+        values = values.mean(axis=0).reshape(-1, len(thresholds))
     elif optimize == "batch_max":
-        values = values.max(axis=0)
+        values = values.max(axis=0).reshape(-1, len(thresholds))
+    elif optimize == "batch":
+        pass
+    else:
+        raise ValueError("unrecognized value of kwarg `optimize`")
     
     # choose how to evaluate
     if metric_criteria == 'max':
-        idx = np.argmax(values)
+        idx = np.argmax(values, axis=1)
     elif metric_criteria == 'min':
-        idx = np.argmin(values)
+        idx = np.argmin(values, axis=1)
     
-    return thresholds[idx], values[idx]
+    return thresholds[idx].squeeze(), values[np.arange(len(values)),idx].squeeze()
