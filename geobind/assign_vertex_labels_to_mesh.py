@@ -122,6 +122,25 @@ class AtomToClassMapper(object):
                     parent = child
         return parent
 
+# def assignMeshLabelsFromMesh(V_source, V_target,
+    # distance_cutoff=3.0,
+    # smooth=False,
+    # smoothing_threshold=50.0,
+    # no_smooth=None,
+    # mask=False,
+    # mask_cutoff=4.0
+    # ):
+    
+    # Y = np.zeros(len(V_target))
+    
+    # # get KDTree of target vertices
+    # kdt = cKDTree(V_target)
+    
+    # # find all vertices in source within cutoff distance of target
+    # dist, ti = kdt.query(V_source)
+    
+    # return ti[dist <= distance_cutoff]
+
 def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
         distance_cutoff=4.0,
         include_hydrogens=True,
@@ -154,12 +173,12 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
             if check_for_intersection:
                 # check if atom-vertex segments intersect the mesh
                 t = mesh.facesInBall(atom.coord, distance_cutoff)
-                ind = segmentsIntersectTriangles(
+                counts = segmentsIntersectTriangles(
                     (np.tile(atom.coord, (len(v),1)), mesh.vertices[v]),
                     (mesh.vertices[t[:,0]], mesh.vertices[t[:,1]], mesh.vertices[t[:,2]])
                 )
-                v = v[ind]
-                w = w[ind]
+                v = v[counts == 0]
+                w = w[counts == 0]
             
             # add weights to labels
             Y[v, c] += w
@@ -180,10 +199,10 @@ def assignMeshLabelsFromStructure(structure, mesh, atom_mapper,
     
     return Y
 
-def assignMeshLabelsFromList(model, mesh, residues,
+def assignMeshLabelsFromList(model, mesh, entities,
         cl=1,
         nc=2,
-        hydrogens=True,
+        include_hydrogens=True,
         smooth=False,
         smoothing_threshold=50.0,
         no_smooth=None,
@@ -195,12 +214,15 @@ def assignMeshLabelsFromList(model, mesh, residues,
     
     # loop over residues
     key = feature_name+str(cl)
-    for residue in residues:
-        for atom in residue:
-            atom.xtra[key] = cl
+    for entity in entities:
+        if entity.get_level() == "A":
+            entity.xtra[key] = cl
+        else:
+            for atom in entity.get_atoms():
+                atom.xtra[key] = cl
     
     # map to vertices
-    Y = mapStructureFeaturesToMesh(mesh, model, [key], include_hydrogens=hydrogens, distance_cutoff=1.5, **kwargs)
+    Y = mapStructureFeaturesToMesh(mesh, model, [key], include_hydrogens=include_hydrogens, distance_cutoff=1.5, **kwargs)
     Y = np.round(Y.reshape(-1)).astype(int)
     
     if smooth:

@@ -94,8 +94,8 @@ def getClassSegmentations(edges, labels,
                             
                             if check_mesh_intersection:
                                 seg = (vertices[vi].reshape(1, -1), vertices[vj].reshape(1, -1)) # line segement joining vertex vi and vj
-                                intersects = segmentsIntersectTriangles(seg, tri) # check if this segment intersects the mesh
-                                
+                                counts = segmentsIntersectTriangles(seg, tri) # check if this segment intersects the mesh
+                                intersects = (counts > 0)
                                 if len(intersects) == 1:
                                     cedges.append([i, j]) # no intersection, join these clusters
                             else:

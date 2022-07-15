@@ -8,7 +8,7 @@ def signedVolume(a, b, c, d):
     return np.sum((a-d)*np.cross(b-d, c-d), axis=2)
 
 def segmentsIntersectTriangles(s, t):
-    """For each line segment in 's', this function computes whether it intersects any of the triangles
+    """For each line segment in 's', this function computes the number of times it intersects any of the triangles
     given in 't'."""
     # compute the normals to each triangle
     normals = np.cross(t[2]-t[0], t[2]-t[1])
@@ -23,7 +23,9 @@ def segmentsIntersectTriangles(s, t):
     
     # determine segments which cross the plane of a triangle. 1 if the sign of the end points of s is 
     # different AND one of end points of s is not a vertex of t
-    cross = (sign1 != sign2)*(sign1 != 0)*(sign2 != 0) # S x T 
+    cross = (sign1 != sign2)*(sign1 != 0)*(sign2 != 0) # S x T
+    del sign1
+    del sign2
     
     # get signed volumes
     v1 = np.sign(signedVolume(t[0], t[1], s[0][:, np.newaxis], s[1][:, np.newaxis])) # S x T
@@ -31,5 +33,16 @@ def segmentsIntersectTriangles(s, t):
     v3 = np.sign(signedVolume(t[2], t[0], s[0][:, np.newaxis], s[1][:, np.newaxis])) # S x T
     
     same_volume = np.logical_and((v1 == v2), (v2 == v3)) # 1 if s and t have same sign in v1, v2 and v3
+    del v1
+    del v2
+    del v3
     
-    return np.nonzero(np.logical_not(np.sum(cross*same_volume, axis=1)))[0]
+    return np.sum(cross*same_volume, axis=1)
+    #intersection_count = np.sum(cross*same_volume, axis=1)
+    
+    # if return_type == "no_intersection":
+        # return np.nonzero(np.logical_not(intersection_count))[0]
+    # elif return_type == "one_or_less":
+        # return np.argwhere(intersection_count <= 1)
+    # elif return_type == "count":
+        # return intersection_count
