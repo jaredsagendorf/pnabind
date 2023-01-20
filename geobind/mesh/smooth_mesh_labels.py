@@ -3,18 +3,21 @@ import numpy as np
 
 # geobind modules
 from .get_class_segmentations import getClassSegmentations
+from .laplacian_smoothing import laplacianSmoothing
 
 def smoothMeshLabels(edges, labels, num_classes, 
             threshold=16.0,
             faces=None,
             area_faces=None,
             ignore_class=None,
+            laplacian_smoothing=False,
+            iterations=1,
             **kwargs
     ):
     try:
         import trimesh
     except ModuleNotFoundError:
-        raise duleNotFoundError("The dependency 'Trimesh' is required for this functionality!")
+        raise ModuleNotFoundError("The dependency 'Trimesh' is required for this functionality!")
     
     # get class segmentations
     clusters, cluster_idx, cluster_areas, cluster_labels = getClassSegmentations(edges, labels, faces=faces, area_faces=area_faces, **kwargs)
@@ -48,5 +51,9 @@ def smoothMeshLabels(edges, labels, num_classes,
     for i in range(num_clusters):
         cluster = clusters[i]
         labels[cluster] = cluster_labels[i]
+    
+    if laplacian_smoothing:
+        labels = laplacianSmoothing(edges, labels, iterations=iterations)
+        labels = (labels > 0).astype(int)
     
     return labels
