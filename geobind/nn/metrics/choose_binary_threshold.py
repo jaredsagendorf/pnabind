@@ -1,7 +1,8 @@
 # third party modules
 import numpy as np
 
-def chooseBinaryThreshold(y_gt, probs, metric_fn, 
+def chooseBinaryThreshold(y_gt, probs, metric_fn,
+        mask=None,
         metric_criteria='max',
         n_samples=25,
         optimize="batch_mean",
@@ -26,11 +27,19 @@ def chooseBinaryThreshold(y_gt, probs, metric_fn,
         probs = [probs]
     assert len(y_gt) == len(probs)
     
+    if mask is not None:
+        if not isinstance(mask, list):
+            mask = [mask]
+    
     # evaluate metric on each provided array
     values = []
     for i in range(len(y_gt)):
-        y = y_gt[i]
-        p = probs[i]
+        if mask is not None:
+            y = y_gt[i][mask[i]]
+            p = probs[i][mask[i]]
+        else:
+            y = y_gt[i]
+            p = probs[i]
         if p.ndim == 2:
             p = p[:,1]
         values.append(np.array(list(map(m, thresholds))))
