@@ -14,6 +14,7 @@ from .smooth_mesh_labels import smoothMeshLabels
 from .get_class_segmentations import getClassSegmentations
 from .laplacian_smoothing import laplacianSmoothing
 from .get_patch_descriptors import getPatchDescriptors, MeshDescriptor
+from .get_mesh_areas import getVertexArea, getFaceArea
 
 __all__ = [
     "Mesh",
@@ -32,5 +33,7 @@ __all__ = [
     "getClassSegmentations",
     "laplacianSmoothing",
     "getPatchDescriptors",
-    "MeshDescriptor"
+    "MeshDescriptor",
+    "getVertexArea",
+    "getFaceArea"
 ]
