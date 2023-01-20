@@ -119,7 +119,8 @@ class ClassificationDatasetMemory(InMemoryDataset):
             self.scaler = scaler
             dump(scaler, open(self.processed_paths[1], "wb"))
 
-def _processData(data_files, nc, labels_key, 
+def _processData(data_files, nc,
+        labels_key=None, 
         balance="all",
         max_percentage=1.0,
         scaler=None,
@@ -131,7 +132,8 @@ def _processData(data_files, nc, labels_key,
         label_type="vertex",
         train_mask_keys=None,
         test_mask_keys=None,
-        use_masks=True
+        use_masks=True,
+        extras=None
     ):
     # set up defaults
     if train_mask_keys is None:
@@ -152,35 +154,42 @@ def _processData(data_files, nc, labels_key,
         else:
             X = data_arrays['X']
         
-        Y = data_arrays[labels_key]
-        if use_masks:
-            # construct training mask
-            tr_masks = [data_arrays[k] for k in train_mask_keys]
-            if label_type == "vertex":
-                if balance == 'balanced':
-                    mask_b = balancedClassIndices(Y, range(nc), max_percentage=max_percentage, masks=tr_masks)
-                elif balance == 'all':
-                    mask_b = (Y == Y)
+        if labels_key:
+            Y = data_arrays[labels_key]
+            if use_masks:
+                # construct training mask
+                tr_masks = [data_arrays[k] for k in train_mask_keys]
+                if label_type == "vertex":
+                    if balance == 'balanced':
+                        mask_b = balancedClassIndices(Y, range(nc), max_percentage=max_percentage, masks=tr_masks)
+                    elif balance == 'all':
+                        mask_b = (Y == Y)
+                    else:
+                        raise ValueError("Unrecognized value for `balance` keyword: {}".format(balance))
                 else:
-                    raise ValueError("Unrecognized value for `balance` keyword: {}".format(balance))
-            else:
-                mask_b = np.ones(len(X), dtype=bool)
-            tr_masks += [mask_b]
-            tr_masks = np.vstack(tr_masks).prod(axis=0)
-            
-            # construct testing mask
-            if test_mask_keys == "same":
-                te_masks = tr_masks
-            else:
-                te_masks = [data_arrays[k] for k in test_mask_keys]
-                if len(te_masks) == 0:
-                    te_masks = [np.ones(len(X), dtype=bool)]
-                te_masks = np.vstack(te_masks).prod(axis=0)
+                    mask_b = np.ones(len(X), dtype=bool)
+                tr_masks += [mask_b]
+                tr_masks = np.vstack(tr_masks).prod(axis=0)
+                
+                # construct testing mask
+                if test_mask_keys == "same":
+                    te_masks = tr_masks
+                else:
+                    te_masks = [data_arrays[k] for k in test_mask_keys]
+                    if len(te_masks) == 0:
+                        te_masks = [np.ones(len(X), dtype=bool)]
+                    te_masks = np.vstack(te_masks).prod(axis=0)
+        else:
+            use_masks = False
         
         # construct data object
+        if labels_key:
+            y = torch.tensor(Y, dtype=torch.int64)
+        else:
+            y = None
         data = Data(
             x=torch.tensor(X, dtype=torch.float32),
-            y=torch.tensor(Y, dtype=torch.int64),
+            y=y,
             pos=torch.tensor(data_arrays['V'], dtype=torch.float32),
             norm=torch.tensor(data_arrays['N'], dtype=torch.float32),
             face=torch.tensor(data_arrays['F'].T, dtype=torch.int64),
@@ -191,6 +200,10 @@ def _processData(data_files, nc, labels_key,
             data.train_mask = torch.tensor(tr_masks, dtype=torch.bool)
             data.test_mask = torch.tensor(te_masks, dtype=torch.bool)
         
+        # if extras is not None:
+            # for extra in extras:
+                # e = torch.tensor(data_arrays[extra], dtype=torch.float32)
+                # data['extra'] = e
         data_list.append(data)
     
     # filter data
@@ -223,7 +236,7 @@ def _processData(data_files, nc, labels_key,
     }
     return data_list, transforms
 
-def loadDataset(data_files, nc, labels_key, data_dir, cache_dataset=False, **kwargs):
+def loadDataset(data_files, nc, labels_key=None, data_dir=".", cache_dataset=False, **kwargs):
     if isinstance(data_files, str):
         with open(data_files) as FH:
             data_files = [_.strip() for _ in FH.readlines()]
