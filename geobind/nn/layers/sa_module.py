@@ -75,7 +75,7 @@ class SAModule(torch.nn.Module):
         else:
             self.edge_bn = None
     
-    def forward(self, x, pos, batch, norm):
+    def forward(self, x, pos, batch, norm, permute_edge_features=False):
         if self.radial_graph:
             # pool points based on FPS algorithm, returning num_points*ratio centroids
             idx = fps(pos, batch, ratio=self.ratio, random_start=self.training)
@@ -92,6 +92,10 @@ class SAModule(torch.nn.Module):
                 edge_attr = self.edge_fn(x, pos, norm, edge_index)
                 if self.edge_bn is not None:
                     edge_attr = self.edge_bn[i](edge_attr)
+                
+                if permute_edge_features:
+                    perm = torch.randperm(edge_attr.size(0))
+                    edge_attr = edge_attr[perm]
                 
                 # perform convolution
                 args = self.get_conv_args(x, pos, norm, edge_index, edge_attr)
