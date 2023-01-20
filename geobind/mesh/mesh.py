@@ -54,13 +54,26 @@ class Mesh(object):
         return self.mesh.area_faces
     
     @property
+    def area_vertices(self):
+        if "area_vertices" in self.cache:
+            return self.cache["area_vertices"]
+        else:
+            area_vertices = np.zeros(len(self.vertices))
+            np.add.at(area_vertices, self.faces[:, 0], self.area_faces/3)
+            np.add.at(area_vertices, self.faces[:, 1], self.area_faces/3)
+            np.add.at(area_vertices, self.faces[:, 2], self.area_faces/3)
+            self.cache["area_vertices"] = area_vertices
+            
+            return area_vertices
+    
+    @property
     def area(self):
         return self.mesh.area
     
     @property
     def volume(self):
         return self.mesh.volume
-
+    
     @property
     def bbox(self):
         return self.mesh.bounding_box_oriented
@@ -72,7 +85,7 @@ class Mesh(object):
     @property
     def vertex_kdtree(self):
         return self.mesh.kdtree
-
+    
     @property
     def vertex_adjacency_graph(self):
         return self.mesh.vertex_adjacency_graph
@@ -190,13 +203,18 @@ class Mesh(object):
         
         return indices, distances
     
-    def facesInBall(self, x, r):
+    def facesInBall(self, x, r, return_indices=False):
         """Returns all triangles that contain at least one vertex within radius 'r' of point 'x'"""
         indices = self.vertex_kdtree.query_ball_point(x, r)
-        fi = self.mesh.vertex_faces[indices].flatten()
-        fi = np.unique(fi[fi >=0])
-        
-        return self.mesh.faces[fi]
+        if len(indices) > 0:
+            fi = self.mesh.vertex_faces[indices].flatten()
+            if return_indices:
+                return fi
+            else:
+                fi = np.unique(fi[fi >=0])
+                return self.mesh.faces[fi]
+        else:
+            return []
     
     def findNeighbors(self, v, k=1, nlist=None, vo=None):
         """Returns the k-neighbors of a given vertex"""
