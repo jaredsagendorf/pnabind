@@ -1,6 +1,7 @@
 import torch
 from torch_scatter import scatter_add
 from torch_geometric.nn.inits import reset
+from torch.nn.functional import hardsigmoid
 
 class LocalAttentionPooling(torch.nn.Module):
     r"""Global soft attention layer from the `"Gated Graph Sequence Neural
@@ -26,11 +27,16 @@ class LocalAttentionPooling(torch.nn.Module):
             before combining them with the attention scores, *e.g.*, defined by
             :class:`torch.nn.Sequential`. (default: :obj:`None`)
     """
-    def __init__(self, gate_nn, nn=None, normalize=True):
+    def __init__(self, gate_nn, nn=None, normalize=True, act='sigmoid'):
         super(LocalAttentionPooling, self).__init__()
         self.gate_nn = gate_nn
         self.nn = nn
         self.normalize = normalize
+        
+        if act == "sigmoid":
+            self.act = torch.sigmoid
+        else:
+            self.act = hardsigmoid
         
         self.reset_parameters()
     
@@ -47,7 +53,7 @@ class LocalAttentionPooling(torch.nn.Module):
         x = self.nn(x) if self.nn is not None else x
         assert gate.dim() == x.dim() and gate.size(0) == x.size(0)
         
-        gate = torch.sigmoid(gate)
+        gate = self.act(gate)
         out = scatter_add(gate * x, batch, dim=0, dim_size=size)
         if self.normalize:
             out = out / (scatter_add(gate, batch, dim=0, dim_size=size) + 1e-8)
