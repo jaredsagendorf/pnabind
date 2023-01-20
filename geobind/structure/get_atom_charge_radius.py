@@ -3,11 +3,9 @@ import subprocess
 import os
 
 # geobind modules
-from .strip_hydrogens import stripHydrogens
-from .structure import StructureData
 from .data import data
 
-def getAtomChargeRadius(structure, prefix='structure', hydrogens=True, keepPQR=False, source="AMBER", min_radius=0.6):
+def getAtomChargeRadius(structure, source="AMBER", min_radius=0.6):
     """ Assign atomic parameters to every atom in a protein chain. Values are stored in atom.xtra 
     dictionary. The following keys are used
     ------------------------------------------------------------------------------------------------
@@ -83,7 +81,7 @@ def getAtomChargeRadius(structure, prefix='structure', hydrogens=True, keepPQR=F
                 if atmn == "OP3":
                     atmn = "O2P" # substitute for existing atom
                     
-            atom.xtra["radius"] = data.AMBER[resn][atmn]["radius"]
+            atom.xtra["radius"] = max(data.AMBER[resn][atmn]["radius"], min_radius)
             atom.xtra["charge"] = data.AMBER[resn][atmn]["charge"]
     elif source == "freesasa":
         # assign radius only

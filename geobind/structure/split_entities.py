@@ -14,8 +14,9 @@ def splitEntities(structure, regexes=None, atom_mapper=None, mi=0):
             if regexes['PROTEIN']['STANDARD_RESIDUES'].search(resname):
                 pro.append(residue.get_full_id())
             else:
-                if atom_mapper and atom_mapper.testResidue(residue):
-                    lig.append(residue.get_full_id())
+                if atom_mapper is not None:
+                    if atom_mapper.testResidue(residue):
+                        lig.append(residue.get_full_id())
                 else:
                     lig.append(residue.get_full_id())
     

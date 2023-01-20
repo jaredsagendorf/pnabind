@@ -265,6 +265,7 @@ def cleanProtein(structure,
         fixer.removeHeterogens(False)
         fixer.findMissingAtoms()
         fixer.addMissingAtoms()
+        fixer.addMissingHydrogens(7.0)
         
         tmpFile2 = tempFileName(prefix, 'pdb')
         PDBFile.writeFile(fixer.topology, fixer.positions, open(tmpFile2, 'w'), keepIds=True)

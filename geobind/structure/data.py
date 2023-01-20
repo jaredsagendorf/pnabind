@@ -182,6 +182,9 @@ class Data(object):
         
         with open(os.path.join(DATA_PATH, 'BINARY_STANDARD_RNA.json')) as FILE:
             self.label_sets["BINARY_STANDARD_RNA"] = json.load(FILE)
+        
+        with open(os.path.join(DATA_PATH, 'BINARY_STANDARD_NA.json')) as FILE:
+            self.label_sets["BINARY_STANDARD_NA"] = json.load(FILE)
             
         with open(os.path.join(DATA_PATH, 'MULTICLASS_STANDARD_DSDNA.json')) as FILE:
             self.label_sets["MULTICLASS_STANDARD_DSDNA"] = json.load(FILE)

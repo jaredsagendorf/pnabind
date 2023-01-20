@@ -41,6 +41,6 @@ def getAtomSESA(atoms, prefix='area', mesh=None, clean=True, hydrogens=True, qui
         np.add.at(vertex_areas, mesh.faces[:, 1], mesh.area_faces/3)
         np.add.at(vertex_areas, mesh.faces[:, 2], mesh.area_faces/3)
         
-        mapPointFeaturesToStructure(mesh.vertices, atoms,  vertex_areas, feature_name)
+        mapPointFeaturesToStructure(mesh.vertices, atoms, vertex_areas, feature_name, impute=True)
         
     return feature_name
