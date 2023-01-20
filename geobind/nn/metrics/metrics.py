@@ -7,6 +7,8 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 def auprc(y_gt, prob, pi=1, average='binary', **kwargs):
     # determine if binary or multiclass
     if average == 'binary':
+        if (y_gt == 1).sum() == 0:
+            return float('nan')
         pre_vals, rec_vals, _ = precision_recall_curve(y_gt, prob[:,pi])
         auprc = auc(rec_vals, pre_vals)
     else:
@@ -18,6 +20,8 @@ def auprc(y_gt, prob, pi=1, average='binary', **kwargs):
 def auroc(y_gt, prob, pi=1, average='binary', **kwargs):
     # determine if binary or multiclass
     if average == 'binary':
+        if (y_gt == 1).sum() == 0:
+            return float('nan')
         fpr, tpr, _ = roc_curve(y_gt, prob[:,pi])
         auroc = auc(fpr, tpr)
     else:
