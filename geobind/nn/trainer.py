@@ -94,7 +94,7 @@ class Trainer(object):
         best_state_metric_dataset='validation',
         best_state_metric_goal='max',
         params_to_write=None,
-        metrics_calculation="average_batches",
+        metrics_calculation="micro",
         use_mask=True,
         sample_ratio=1.0
     ):
@@ -183,13 +183,13 @@ class Trainer(object):
                 metrics = {}
                 metrics['train'] = self.evaluator.getMetrics(dataset,
                         eval_mode=True, report_threshold=True, threshold=0.5,
-                        metrics_calculation=metrics_calculation, use_mask=use_mask
+                        metrics_calculation=metrics_calculation, use_masks=use_mask
                 )
                 metrics['train']['loss'] = epoch_loss/(n + 1e-5)
                 
                 if validation_dataset is not None:
                     metrics['validation'] = self.evaluator.getMetrics(validation_dataset,
-                        eval_mode=True, threshold=0.5, metrics_calculation=metrics_calculation, use_mask=use_mask
+                        eval_mode=True, threshold=0.5, metrics_calculation=metrics_calculation, use_masks=use_mask
                     )
                 
                 # report performance
