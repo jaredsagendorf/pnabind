@@ -5,10 +5,10 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="geobind",
-    version="0.0.1",
+    version="1.0",
     author="Jared Sagendorf",
     author_email="jsagendorf@gmail.com",
-    description="A package for predicting macromolecular binding sites using Geometric Deep Learning.",
+    description="A package for predicting protein binding sites and binding function using Geometric Deep Learning.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/jaredsagendorf/geobind",
