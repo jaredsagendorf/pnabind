@@ -1,0 +1,37 @@
+rRNA-binding
+Chromatin regulator
+Nucleotide-binding
+Guanine-nucleotide releasing factor
+Nucleosome core
+cGMP
+Aminoacyl-tRNA synthetase
+DNA invertase
+Helicase
+Excision nuclease
+Suppressor of RNA silencing
+GTP-binding
+Initiation factor
+Signal recognition particle
+cAMP-binding
+DNA-binding
+Homeobox
+NADP
+c-di-GMP
+DNA replication inhibitor
+tRNA-binding
+Sigma factor
+GTPase activation
+ATP-binding
+RNA-binding
+cGMP-binding
+Viral nucleoprotein
+Ribosomal protein
+cAMP
+CF(1)
+Mobility protein
+Ribonucleoprotein
+Ligase
+Activator
+Repressor
+ATP synthesis
+NAD
