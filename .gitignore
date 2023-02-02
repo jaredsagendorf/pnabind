@@ -4,6 +4,7 @@ models
 tests
 .rsync_exclude
 *.bak
+*.gz
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
