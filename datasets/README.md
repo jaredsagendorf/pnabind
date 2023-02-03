@@ -1,0 +1,1 @@
+These subdirectories contain the datasets used in training and evaluating binding site prediction and binding function predictions models in our manuscript. See README files within each subdirectory. 

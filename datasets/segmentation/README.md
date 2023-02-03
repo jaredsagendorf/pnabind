@@ -1,6 +1,6 @@
 The following training and test datasets are used in our manuscript for training and evaluating binding site prediciton models. Due to file size limitations, datasets will be available at: https://rohslab.usc.edu/tools.html
 
-| Training Set | Corresponding Test Set |
+| Training Set | Corresponding Test Sets |
 | ----------- | ----------- |
 | DNA-573(1) | DNA-129(1) |
 | RNA-495(1) | RNA-117(1) |

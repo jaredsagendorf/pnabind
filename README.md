@@ -1,7 +1,9 @@
-# geobind
+# GeoBind
+A python package and scripts for building and training graph neural network models of protein-nucleic acid binding.
+![overview](docs/overview.png)
 
 ## Installation
-- clone this repository to some local directory
+- clone this repository to a local directory
 - cd into that directory and run 'pip install -e .'
 - install the required dependencies
 
