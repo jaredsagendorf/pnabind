@@ -200,10 +200,11 @@ def _processData(data_files, nc,
             data.train_mask = torch.tensor(tr_masks, dtype=torch.bool)
             data.test_mask = torch.tensor(te_masks, dtype=torch.bool)
         
-        # if extras is not None:
-            # for extra in extras:
-                # e = torch.tensor(data_arrays[extra], dtype=torch.float32)
-                # data['extra'] = e
+        if extras is not None:
+            for extra in extras:
+                e = torch.from_numpy(data_arrays[extra])
+                data[extra] = e
+        
         data_list.append(data)
     
     # filter data

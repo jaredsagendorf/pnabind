@@ -9,7 +9,9 @@ def auprc(y_gt, prob, pi=1, average='binary', **kwargs):
     if average == 'binary':
         if (y_gt == 1).sum() == 0:
             return float('nan')
-        pre_vals, rec_vals, _ = precision_recall_curve(y_gt, prob[:,pi])
+        if prob.ndim > 1:
+            prob = prob[:,pi]
+        pre_vals, rec_vals, _ = precision_recall_curve(y_gt, prob)
         auprc = auc(rec_vals, pre_vals)
     else:
         nc = prob.shape[1]
@@ -22,7 +24,9 @@ def auroc(y_gt, prob, pi=1, average='binary', **kwargs):
     if average == 'binary':
         if (y_gt == 1).sum() == 0:
             return float('nan')
-        fpr, tpr, _ = roc_curve(y_gt, prob[:,pi])
+        if prob.ndim > 1:
+            prob = prob[:,pi]
+        fpr, tpr, _ = roc_curve(y_gt, prob)
         auroc = auc(fpr, tpr)
     else:
         #nc = prob.shape[1]

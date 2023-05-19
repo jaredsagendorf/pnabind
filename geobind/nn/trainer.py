@@ -65,6 +65,7 @@ class Trainer(object):
         self.best_state = None
         self.best_state_metric = None
         self.best_epoch = None
+        self.epochs_since_best = 0
         
         # set up scheduler
         if scheduler is not None:
@@ -96,7 +97,11 @@ class Trainer(object):
         params_to_write=None,
         metrics_calculation="micro",
         use_mask=True,
-        sample_ratio=1.0
+        sample_ratio=1.0,
+        early_stopping=False,
+        early_stopping_threshold=10,
+        scale_class_weight=False,
+        class_weight_scale_power=0.9
     ):
         # begin training
         if not self.quiet:
@@ -111,8 +116,12 @@ class Trainer(object):
         
         if best_state_metric_goal == 'max':
             self.best_state_metric = -999999
+            metricIsBetter = lambda m: m > self.best_state_metric
+            metricMeetsCriteria = lambda m: m > best_state_metric_threshold
         else:
             self.best_state_metric = 999999
+            metricIsBetter = lambda m: m < self.best_state_metric
+            metricMeetsCriteria = lambda m: m < best_state_metric_threshold
         
         batch_count = 0
         first_epoch = True
@@ -141,7 +150,7 @@ class Trainer(object):
                 try:
                     loss = self.optimizer_step(batch, y, mask, **optimizer_kwargs)
                 except RuntimeError as e: # out of memory
-                    logging.info("Runtime error -- skipping batch.")
+                    logging.info("Runtime error: OOM -- skipping batch.")
                     logging.debug("Error at loss computation.", exc_info=e)
                     oom = True
                 if oom:
@@ -155,6 +164,11 @@ class Trainer(object):
                 if batch_count % batch_loss_every  == 0:
                     if self.writer:
                         self.writer.add_scalar("train/batch_loss", loss, batch_count)
+                
+                if scale_class_weight and optimizer_kwargs["weight"] is not None:
+                    w = optimizer_kwargs["weight"]
+                    w = torch.pow(w, class_weight_scale_power)
+                    optimizer_kwargs["weight"] = w / torch.norm(w)
                 
                 ######### adding parameters of model to tensorboard ######
                 if (params_to_write is not None) and self.writer:
@@ -204,19 +218,18 @@ class Trainer(object):
                 
                 if best_state_metric:
                     state_metric = metrics[best_state_metric_dataset][best_state_metric]
-                    if best_state_metric_goal == 'max' and state_metric > best_state_metric_threshold:
-                        if state_metric > self.best_state_metric:
-                            self.best_state_metric = state_metric
-                            self.best_state = copy.deepcopy(self.model.state_dict())
-                            self.best_epoch = epoch
-                            self.metrics_history['best_epoch'] = epoch
-                    elif best_state_metric_goal == 'min' and state_metric < best_state_metric_threshold:
-                        if state_metric < self.best_state_metric:
-                            self.best_state_metric = state_metric
-                            self.best_state = copy.deepcopy(self.model.state_dict())
-                            self.best_epoch = epoch
-                            self.metrics_history['best_epoch'] = epoch
-                
+                    if metricMeetsCriteria(state_metric) and metricIsBetter(state_metric):
+                        self.best_state_metric = state_metric
+                        self.best_state = copy.deepcopy(self.model.state_dict())
+                        self.best_epoch = epoch
+                        self.metrics_history['best_epoch'] = epoch
+                        self.epochs_since_best = 0
+                    elif metricMeetsCriteria(state_metric) and early_stopping:
+                        self.epochs_since_best += 1
+                        if self.epochs_since_best > early_stopping_threshold:
+                            logging.info("Early stopping triggered at epoch {}".format(epoch))
+                            break
+            
             # checkpoint
             if checkpoint_every and (epoch % checkpoint_every == 0):
                 fname = self.saveState(epoch, "{}.{}.tar".format(self.model_name, epoch))
@@ -228,7 +241,7 @@ class Trainer(object):
         # decide how to weight classes
         if use_weight and weight is None:
             weight = classWeights(y, self.nc, device=self.device)
-        elif not use_weight:
+        else:
             weight = None
         
         self.optimizer.zero_grad()
@@ -257,7 +270,7 @@ class Trainer(object):
             
             for metric in metrics[tag]:
                 # add metric to Tensorboard writer
-                if(self.writer):
+                if self.writer:
                     self.writer.add_scalar("{}/{}".format(tag, metric), metrics[tag][metric], epoch)
                 
                 # add metric to history
@@ -276,17 +289,17 @@ class Trainer(object):
     def saveState(self, epoch, suffix, metrics=True, optimizer=True, state=None):
         fname = ospj(self.checkpoint_path, suffix)
         
-        # remove 'module' prefix from state_dict entries
-        new_state_dict = OrderedDict()
         if state is None:
             state = self.model.state_dict()
         
-        for k, v in state.items():
-            name = k.replace("module.", "") # remove 'module.' prefix
-            new_state_dict[name] = v
+        # # remove 'module' prefix from state_dict entries
+        # new_state_dict = OrderedDict()
+        # for k, v in state.items():
+            # name = k.replace("module.", "") # remove 'module.' prefix
+            # new_state_dict[name] = v
         
         data = {
-            'model_state_dict': new_state_dict,
+            'model_state_dict': state,
             'epoch': epoch
         }
         
