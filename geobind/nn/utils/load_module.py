@@ -1,7 +1,7 @@
 import importlib.util
 import os.path as op
 
-def loadModule(model_name, module_path, model_args, model_kwargs):
+def loadModule(module_path, model_name=None,  model_args=[], model_kwargs={}, return_model=True):
     # specify the module that needs to be 
     # imported relative to the path of the 
     # module
@@ -16,6 +16,8 @@ def loadModule(model_name, module_path, model_args, model_kwargs):
     spec.loader.exec_module(module)
     
     # initialize the model
-    model = getattr(module, model_name)(*model_args, **model_kwargs)
-    
-    return module, model
+    if return_model:
+        model = getattr(module, model_name)(*model_args, **model_kwargs)
+        return module, model
+    else:
+        return module
