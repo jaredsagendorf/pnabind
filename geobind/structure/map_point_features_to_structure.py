@@ -37,6 +37,8 @@ def mapPointFeaturesToStructure(points, atom_list, features, feature_names, kdtr
         reduce_fn = np.mean
     elif reduce_method == 'max':
         reduce_fn = np.max
+    elif reduce_method == 'min':
+        reduce_fn = np.min
     
     for atom in atom_list:
         for fn in feature_names:

@@ -20,6 +20,8 @@ def getAtomChargeRadius(structure, source="AMBER", min_radius=0.6):
             residue = atom.get_parent()
             resn = residue.get_resname().strip()
             atmn = atom.name.strip()
+            if atom.element == "D":
+                atmn = "H" + atmn[1:] # replace deuterium with hydrogen
             
             if resn in data.standard_residues:
                 # protein checks
@@ -34,13 +36,27 @@ def getAtomChargeRadius(structure, source="AMBER", min_radius=0.6):
                     else:
                         resn = "HIP"
                 
-                # check for C-terminus
-                if "OXT" in residue:
-                    resn = "C"+resn
+                # protonated ASP
+                if resn == "ASP":
+                    if "HD2" in residue:
+                        resn = "ASH"
                 
-                # check for N-terminus
-                if ("H1" in residue) or ("H2" in residue) or ("H3" in residue):
+                # protonated GLU
+                if resn == "GLU":
+                    if "HE2" in residue:
+                        resn = "GLH"
+                
+                # N/C terminus
+                if "OXT" in residue:
+                    # check for C-terminus
+                    resn = "C"+resn
+                elif ("H1" in residue) or ("H2" in residue) or ("H3" in residue):
+                    # check for N-terminus
                     resn = "N"+resn
+                    if resn != "NPRO" and atmn == "H":
+                        atmn = "H1"
+                    elif atmn == "H":
+                        atmn = "H3"
             
             if resn in data.standard_DNA_nucleotides:
                 # DNA checks
@@ -80,9 +96,15 @@ def getAtomChargeRadius(structure, source="AMBER", min_radius=0.6):
                 
                 if atmn == "OP3":
                     atmn = "O2P" # substitute for existing atom
-                    
+            #try:
             atom.xtra["radius"] = max(data.AMBER[resn][atmn]["radius"], min_radius)
             atom.xtra["charge"] = data.AMBER[resn][atmn]["charge"]
+            #except:
+            #    print(resn, atmn)
+            #    print(residue.get_id())
+            #    for atom in residue:
+            #        print(atom.name, atom.element)
+            #    exit(0)
     elif source == "freesasa":
         # assign radius only
         from. get_atom_sasa import Radius

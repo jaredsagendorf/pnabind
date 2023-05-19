@@ -159,10 +159,8 @@ def tempFileName(prefix, ext):
 def cleanProtein(structure,
         mutator=None,
         regexes=None,
-        hydrogens=True,
-        run_pdb2pqr=True,
+        remove_hydrogens=False,
         quiet=False,
-        remove_numerical_chain_id=False,
         method="geobind",
         **kwargs
     ):
@@ -170,33 +168,6 @@ def cleanProtein(structure,
     chain.
     """
     prefix = structure.name # used for file names
-    
-    if remove_numerical_chain_id:
-        # APBS and TABI-PB does not process numerical chain IDs correctly. This is a work-around
-        available_ids = list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-        
-        # find current chain ids
-        taken_ids = set()
-        for chain in structure.get_chains():
-            cid = chain.get_id()
-            taken_ids.add(cid)
-        
-        # iterate over chains and update
-        chain_map = {}
-        for chain in structure.get_chains():
-            cid = chain.get_id()
-            if cid.isnumeric():
-                # we want to replace this chain id
-                while len(available_ids) > 0:
-                    new_id = available_ids.pop()
-                    if new_id in taken_ids:
-                        continue
-                    else:
-                        break
-                chain_map[cid] = new_id
-                chain.id = new_id
-            else:
-                chain_map[cid] = cid
     
     if method == "geobind":
         # set up needed objects
@@ -240,6 +211,7 @@ def cleanProtein(structure,
                     if not quiet:
                         logging.info("replacing residue %s with %s", chain[rid].get_resname(), replacement.get_resname())
                     replacement.id = rid
+                    replacement.set_parent(chain)
                     idx = chain.child_list.index(chain[rid])
                     chain.child_list[idx] = replacement
                 else:
@@ -253,6 +225,11 @@ def cleanProtein(structure,
         except ModuleNotFoundError:
             raise ModuleNotFoundError("The dependencies 'pdbfixer' and 'openmm' are required with option 'method=\"pdbfixer\"'")
         
+        try:
+            from Bio.PDB import PDBParser
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError("BioPython is required for this functionality")
+            
         # create a temp file
         tmpFile1 = tempFileName(prefix, 'pdb')
         structure.save(tmpFile1)
@@ -271,25 +248,15 @@ def cleanProtein(structure,
         PDBFile.writeFile(fixer.topology, fixer.positions, open(tmpFile2, 'w'), keepIds=True)
         
         # load new fixed structure
-        structure = StructureData(tmpFile2, name=prefix)
+        parser = PDBParser(PERMISSIVE=1, QUIET=True)
+        structure = parser.get_structure(prefix, tmpFile2)
         
         # clean up
         os.remove(tmpFile1)
         os.remove(tmpFile2)
     
-    # run PDB2PQR if requested
-    if run_pdb2pqr:
-        structure, pqrFile = runPDB2PQR(structure, **kwargs)
-    
     # remove hydrogens if requested
-    if not hydrogens:
+    if remove_hydrogens:
         stripHydrogens(structure)
     
-    # decide what to return
-    rargs = [structure]
-    if run_pdb2pqr:
-        rargs.append(pqrFile)
-    if remove_numerical_chain_id:
-        rargs.append(chain_map)
-    
-    return tuple(rargs)
+    return StructureData(structure[0], name=prefix)

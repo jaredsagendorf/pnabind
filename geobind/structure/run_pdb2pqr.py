@@ -12,7 +12,60 @@ import numpy as np
 from .strip_hydrogens import stripHydrogens
 from .structure import StructureData
 
-def padCoordinates(pqrFile):
+def loadPQR(pqrFile, structure_name=None, add_charge_radius=True, min_radius=0.6):
+    try:
+        from Bio.PDB import PDBParser
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("The dependency 'BioPython' is required!")
+    
+    parser = PDBParser(PERMISSIVE=1, QUIET=True)
+    structure = parser.get_structure(structure_name, pqrFile)
+    model = structure[0]
+    
+    if add_charge_radius:
+        # Get radius and charge from PQR file
+        for line in open(pqrFile):
+            if line[0:4] != "ATOM":
+                continue
+            cid = line[21]
+            num = int(line[22:26].strip())
+            ins = line[26]
+            rid = (" ", num, ins)
+            crg = float(line[55:62].strip())
+            vdw = float(line[63:69].strip())
+            atm = line[12:16].strip()
+            if vdw == 0.0:
+                vdw = min_radius # 0 radius atoms causes issues - set to a minimum of 0.6
+            if rid in model[cid]:
+                if add_charge_radius and (atm in model[cid][rid]):
+                    model[cid][rid][atm].xtra["charge"] = crg 
+                    model[cid][rid][atm].xtra["radius"] = vdw
+    structure = StructureData(model, name=structure_name)
+    
+    return structure
+
+def cleanPQR(pqrFile, remove_numerical_chain_ids=False):
+    if remove_numerical_chain_ids:
+        available_ids = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+        
+        # iterate over all chains to get list of ids
+        chain_ids = set()
+        with open(pqrFile) as FH:
+            for line in FH:
+                if line[0:4] == "ATOM":
+                    cid = line[21]
+                    chain_ids.add(cid)
+                    available_ids.discard(cid)
+        
+        available_ids = list(sorted(available_ids))
+        chain_map = {}
+        for cid in chain_ids:
+            if cid.isnumeric():
+                new_id = available_ids.pop()
+                chain_map[cid] = new_id
+            else:
+                chain_map[cid] = cid
+    
     padded = open("tmp.pqr", "w")
     with open(pqrFile) as FH:
         for line in FH:
@@ -22,6 +75,9 @@ def padCoordinates(pqrFile):
                 x = line[30:38].strip()
                 y = line[38:46].strip()
                 z = line[46:54].strip()
+                if remove_numerical_chain_ids:
+                    cid = s[21]
+                    s = s[0:21] + chain_map[cid] + s[22:]
                 padded.write("{}{:>9s}{:>9s}{:>9s}{}".format(s, x, y, z, e))
             else:
                 padded.write(line)
@@ -31,14 +87,7 @@ def padCoordinates(pqrFile):
 def tempFileName(prefix, ext):
     return "%s.%s" % (prefix + ''.join(choice(ascii_letters) for i in range(15)), ext)
 
-def runPDB2PQR(structure, replace_hydrogens=False, command="pdb2pqr", add_charge_radius=True, keep_pqr=True, min_radius=0.6, structure_name=None, pad_coords=True):
-    try:
-        from Bio.PDB import PDBParser
-    except ModuleNotFoundError:
-        raise ModuleNotFoundError("The dependency 'BioPython' is required!")
-    
-    if structure_name is None:
-        structure_name = structure.name
+def runPDB2PQR(structure, replace_hydrogens=False, command="pdb2pqr", clean_pqr=True):
     
     FNULL = open(os.devnull, 'w')
     # check if PDB2PQR is installed
@@ -47,23 +96,19 @@ def runPDB2PQR(structure, replace_hydrogens=False, command="pdb2pqr", add_charge
         raise Exception("Command {} not found when trying to run PDB2PQR!".format(command))
     
     if replace_hydrogens:
-        # strip any existing hydrogens - add new ones with PDB2PQR
+        # strip any existing hydrogens - add new ones with PDB2PQR ### replace this with kwarg to structure.save()
         stripHydrogens(structure)
     
     # Write chain to temp file
-    tmpFile = tempFileName(structure_name, 'pdb')
-    pqrFile = "{}.pqr".format(structure_name)
+    tmpFile = tempFileName(structure.name, 'pdb')
+    pqrFile = "{}.pqr".format(structure.name)
     structure.save(tmpFile)
     
     # Run PDB2PQR
-    if add_charge_radius:
-        chain_flag = "--chain"
-    else:
-        chain_flag = ""
     subprocess.call([
             command,
             '--ff=amber',
-            chain_flag,
+            '--chain',
             tmpFile,
             pqrFile
         ],
@@ -71,38 +116,13 @@ def runPDB2PQR(structure, replace_hydrogens=False, command="pdb2pqr", add_charge
         stderr=FNULL
     )
     FNULL.close()
-    
-    parser = PDBParser(PERMISSIVE=1, QUIET=True)
     if not os.path.exists(pqrFile):
         raise FileNotFoundError("No PQR file was produced ({}). Try manually running PDB2PQR on the pbdfile file '{}' and verify output.".format(pqrFile, tmpFile))
-    structure = parser.get_structure(structure_name, pqrFile)
-    model = structure[0]
     
-    # Get radius and charge from PQR file
-    for line in open(pqrFile):
-        if line[0:4] != "ATOM":
-            continue
-        cid = line[21]
-        num = int(line[22:26].strip())
-        ins = line[26]
-        rid = (" ", num, ins)
-        crg = float(line[55:62].strip())
-        vdw = float(line[63:69].strip())
-        atm = line[12:16].strip()
-        if vdw == 0.0:
-            vdw = min_radius # 0 radius atoms causes issues - set to a minimum of 0.6
-        if rid in model[cid]:
-            if add_charge_radius and (atm in model[cid][rid]):
-                model[cid][rid][atm].xtra["charge"] = crg 
-                model[cid][rid][atm].xtra["radius"] = vdw
-    structure = StructureData(model, name=structure_name)
+    if clean_pqr:
+        cleanPQR(pqrFile, remove_numerical_chain_ids=True)
     
     # clean up
     os.remove(tmpFile)
-    if keep_pqr:
-        if pad_coords:
-            padCoordinates(pqrFile)
-        return structure, pqrFile
-    else:
-        os.remove(pqrFile)
-        return structure
+    
+    return pqrFile

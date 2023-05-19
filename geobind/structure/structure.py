@@ -10,7 +10,7 @@ from .get_atom_kdtree import getAtomKDTree
 from .get_surface_residues import getSurfaceResidues
 
 class StructureData(object):    
-    def __init__(self, structure, name='structure', path='.'):
+    def __init__(self, structure, name='structure', path='.', level='S', mid=0):
         try:
             from Bio.PDB import PDBParser, MMCIFParser
             from Bio.PDB.Entity import Entity
@@ -35,6 +35,9 @@ class StructureData(object):
         else:
             raise ValueError("Unknown type for input argument 'structure': {}".format(str(structure)))
         
+        if level == 'M':
+            self.structure = self.structure[mid]
+        
         # properties
         self.name = name
         
@@ -57,7 +60,7 @@ class StructureData(object):
     @classmethod
     def slice(cls, obj, selection, name='slice'):
         """Create a new Structure object 'S2' from a slice of the current one, 'S1'. <selection> 
-        defines which  descendents 'S1' will be stored in 'S2'."""
+        defines which descendents 'S1' will be stored in 'S2'."""
         from Bio.PDB.Structure import Structure
         from Bio.PDB.Model import Model
         from Bio.PDB.Chain import Chain
