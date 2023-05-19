@@ -27,7 +27,7 @@ def runEDTSurf(pdbfile, file_prefix='mesh', basedir='.', clean=True, quiet=True,
     for key in edtsurf_args:
         args.append(key)
         args.append(edtsurf_args[key])
-    if(quiet):
+    if quiet:
         FNULL = open(os.devnull, 'w')
         subprocess.call(args, stdout=FNULL, stderr=FNULL)
         FNULL.close()
