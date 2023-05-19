@@ -15,6 +15,7 @@ from .get_class_segmentations import getClassSegmentations
 from .laplacian_smoothing import laplacianSmoothing
 from .get_patch_descriptors import getPatchDescriptors, MeshDescriptor
 from .get_mesh_areas import getVertexArea, getFaceArea
+from .get_distance_from_boundary import getDistanceFromBoundary
 
 __all__ = [
     "Mesh",
@@ -35,5 +36,6 @@ __all__ = [
     "getPatchDescriptors",
     "MeshDescriptor",
     "getVertexArea",
-    "getFaceArea"
+    "getFaceArea",
+    "getDistanceFromBoundary"
 ]

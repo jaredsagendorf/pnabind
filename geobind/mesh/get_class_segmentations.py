@@ -12,7 +12,8 @@ def getClassSegmentations(edges, labels,
             merge_distance=10.0,
             no_merge=[],
             check_mesh_intersection=True,
-            return_vertex_areas=False
+            return_vertex_areas=False,
+            return_boundary_vertices=False
     ):
     """This function identifies clusters of connected vertices which share a common class label and
     returns them as a list of vertex indices as well as arrays containing the area of each cluster, 
@@ -26,7 +27,7 @@ def getClassSegmentations(edges, labels,
         from scipy.spatial.distance import cdist
     except ModuleNotFoundError:
         raise ModuleNotFoundError("The dependency 'SciPy' is required for this functionality!")
-
+    
     nodes = np.arange(len(labels))
     
     # compute a weight for each node
@@ -124,7 +125,17 @@ def getClassSegmentations(edges, labels,
     cluster_areas = np.zeros(num_clusters)
     np.add.at(cluster_areas, cluster_idx, vertex_areas)
     
+    args = [clusters, cluster_idx, cluster_areas, cluster_labels]
     if return_vertex_areas:
-        return clusters, cluster_idx, cluster_areas, cluster_labels, vertex_areas
-    else:
-        return clusters, cluster_idx, cluster_areas, cluster_labels
+        args.append(vertex_areas)
+    
+    if return_boundary_vertices:
+        boundary_vertices = set(edges[~edge_mask].flatten())
+        cluster_boundaries = []
+        for c in clusters:
+            c_vertices = set(c)
+            boundary = boundary_vertices.intersection(c_vertices)
+            cluster_boundaries.append(np.array(list(boundary), dtype=np.int32))
+        args.append(cluster_boundaries)
+    
+    return tuple(args)
