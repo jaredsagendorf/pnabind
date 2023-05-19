@@ -5,6 +5,7 @@ from .generate_uniform_sphere_points import generateUniformSpherePoints
 from .log_output import logOutput
 from .line_segments_intersect_triangles import segmentsIntersectTriangles
 from .io_utils import moveFile
+from .dummy_model import DummyModel
 
 __all__ = [
     "Interpolator",
@@ -13,5 +14,6 @@ __all__ = [
     "generateUniformSpherePoints",
     "logOutput",
     "segmentsIntersectTriangles",
-    "moveFile"
+    "moveFile",
+    "DummyModel"
 ]
