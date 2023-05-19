@@ -14,6 +14,10 @@ def getCV(structure, radius, residue_ids=None, ns=None, feature_name="cv", imput
         residue_ids = []
         for chain in structure.get_chains():
             for residue in chain:
+                if residue.get_parent() is None:
+                    print(chain.get_id())
+                    print(residue.get_id())
+                    print(residue)
                 residue_ids.append(getResidueID(residue))
     
     if ns is None:
