@@ -21,6 +21,8 @@ from .strip_hydrogens import stripHydrogens
 from .run_pdb2pqr import runPDB2PQR
 from .run_tabipb import runTABIPB
 from .aggregate_residue_atoms import aggregateResidueAtoms
+from .get_msa import ChainSequence, runPSIBLAST, parsePSSM, getMSAFeatures, alignSequences, runHHBLITS, parseHHM
+from .prune_structure import pruneStructure
 
 __all__ = [
     "cleanProtein",
@@ -47,5 +49,13 @@ __all__ = [
     "Radius",
     "runTABIPB",
     "getAtomDepth",
-    "aggregateResidueAtoms"
+    "aggregateResidueAtoms",
+    "ChainSequence",
+    "runPSIBLAST",
+    "parsePSSM",
+    "getMSAFeatures",
+    "alignSequences",
+    "runHHBLITS",
+    "parseHHM",
+    "pruneStructure"
 ]
