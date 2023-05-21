@@ -1,7 +1,6 @@
 # Custom
 scripts
 models
-tests
 .rsync_exclude
 *.bak
 *.gz
