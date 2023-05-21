@@ -1,5 +1,5 @@
 # GEMENAI
-A python package and collection of scripts for building and training graph neural network models of protein-nucleic acid binding.
+A python package and collection of scripts for computing protein surface meshes, chemical, electrostatic, geometric and MSA features, and  building/training graph neural network models of protein-nucleic acid binding.
 ![overview](docs/overview.png)
 
 ## Installation
