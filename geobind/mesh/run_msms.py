@@ -5,8 +5,8 @@ import subprocess
 # third party packages
 import numpy as np
 
-# geobind packages
-from geobind.utils import moveFile
+# gemenai packages
+from gemenai.utils import moveFile
 from .mesh import Mesh
 
 def runMSMS(atoms, file_prefix='mesh', basedir='.', 

@@ -2,7 +2,7 @@
 import subprocess
 import os
 
-# geobind modules
+# gemenai modules
 from .data import data
 
 def getAtomChargeRadius(structure, source="AMBER", min_radius=0.6):
@@ -13,7 +13,7 @@ def getAtomChargeRadius(structure, source="AMBER", min_radius=0.6):
     charge - atomic effective charge
     
     ARGUMENTS:
-        structure - a geobind Structure object
+        structure - a gemenai Structure object
     """
     if source == "AMBER":
         for atom in structure.get_atoms():

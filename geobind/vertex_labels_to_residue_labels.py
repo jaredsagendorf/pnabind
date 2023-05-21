@@ -1,11 +1,11 @@
 # third party modules
 import numpy as np
 
-# geobind modules
-from geobind.structure import StructureData
-from geobind.structure import getAtomKDTree
-from geobind.structure.data import data
-from geobind.structure import mapPointFeaturesToStructure, getResidueDistance
+# gemenai modules
+from gemenai.structure import StructureData
+from gemenai.structure import getAtomKDTree
+from gemenai.structure.data import data
+from gemenai.structure import mapPointFeaturesToStructure, getResidueDistance
 
 def smoothResidueLabels(residues, labels, nc=2, distance_cutoff=4.0, iterations=1, skip_hydrogens=True, ignore_class=set()):
     """Apply laplacian smoothing"""

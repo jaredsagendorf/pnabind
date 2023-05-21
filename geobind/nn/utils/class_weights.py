@@ -1,8 +1,8 @@
 # third party modules
 import torch
 
-# geobind modules
-from geobind.nn import processBatch
+# gemenai modules
+from gemenai.nn import processBatch
 
 def classWeights(data, nc, device='cpu', use_mask=True):
     if isinstance(data, torch.Tensor):

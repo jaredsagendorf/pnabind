@@ -4,8 +4,8 @@ import os
 # third party modules
 import numpy as np
 
-# geobind modules
-from geobind.mesh import runMSMS
+# gemenai modules
+from gemenai.mesh import runMSMS
 from .structure import StructureData
 
 def getAtomSESA(atoms, prefix='area', mesh=None, clean=True, hydrogens=True, quiet=True, feature_name='sesa', binary=False, threshold=0.1, **kwargs):
@@ -33,7 +33,7 @@ def getAtomSESA(atoms, prefix='area', mesh=None, clean=True, hydrogens=True, qui
         if clean:
             os.remove(af)
     else:
-        from geobind.structure import mapPointFeaturesToStructure
+        from gemenai.structure import mapPointFeaturesToStructure
         
         # map vertex areas to atoms
         vertex_areas = np.zeros(len(mesh.vertices))

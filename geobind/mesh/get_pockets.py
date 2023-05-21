@@ -5,7 +5,7 @@ import os
 # third party packages
 import numpy as np
 
-# geobind packages
+# gemenai packages
 from .run_nanoshaper import runNanoShaper
 from .mesh import Mesh
 from .map_point_features_to_mesh import mapPointFeaturesToMesh

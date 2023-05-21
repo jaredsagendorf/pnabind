@@ -1,8 +1,8 @@
 # third party modules
 import numpy as np
 
-# geobind modules
-from geobind.utils import clipOutliers
+# gemenai modules
+from gemenai.utils import clipOutliers
 
 def getHKS(mesh, num_samples=3, num_components=50, feature_name='hks', tau=1, eps=1e-5, normalize=True, **kwargs):
     try:

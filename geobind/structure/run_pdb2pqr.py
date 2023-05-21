@@ -8,7 +8,7 @@ from string import ascii_letters
 # third party modules
 import numpy as np
 
-# geobind modules
+# gemenai modules
 from .strip_hydrogens import stripHydrogens
 from .structure import StructureData
 

@@ -1,7 +1,7 @@
 # third party packages
 import numpy as np
 
-# geobind packages
+# gemenai packages
 from .get_residue_id import getResidueID
 from .get_atom_kdtree import getAtomKDTree
 from .data import data

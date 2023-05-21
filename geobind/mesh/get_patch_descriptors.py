@@ -4,8 +4,8 @@ import multiprocessing as mp
 # third party modules
 import numpy as np
 
-# geobind modules
-from geobind.mesh._zernike import meshDescriptors
+# gemenai modules
+from gemenai.mesh._zernike import meshDescriptors
 from .laplacian_smoothing import laplacianSmoothing
 from .map_point_features_to_mesh import mapPointFeaturesToMesh
 

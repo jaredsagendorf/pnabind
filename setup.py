@@ -4,14 +4,14 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="geobind",
+    name="gemenai",
     version="1.0",
     author="Jared Sagendorf",
-    author_email="jsagendorf@gmail.com",
-    description="A package for predicting protein binding sites and binding function using Geometric Deep Learning.",
+    author_email="sagendor@usc.edu",
+    description="A package for predicting protein binding sites and binding function using geometric deep learning.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/jaredsagendorf/geobind",
+    url="https://github.com/jaredsagendorf/gemenai",
     packages=setuptools.find_packages(),
     classifiers=[
 	"Development Status :: 3 - Alpha",
@@ -19,5 +19,5 @@ setuptools.setup(
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.9',
 )

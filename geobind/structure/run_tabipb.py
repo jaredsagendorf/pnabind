@@ -6,8 +6,8 @@ import subprocess
 # third party modules
 import numpy as np
 
-# geobind modules
-from geobind.utils import moveFile
+# gemenai modules
+from gemenai.utils import moveFile
 
 def stripChainID(pqr_file, prefix=None):
     if prefix is None:

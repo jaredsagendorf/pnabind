@@ -1,4 +1,4 @@
-# geobind modules
+# gemenai modules
 from .get_residue_id import getResidueID
 
 def getSurfaceResidues(structure, area_key='sesa', threshold=0.0, hydrogens=False):

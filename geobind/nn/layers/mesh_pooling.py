@@ -11,8 +11,8 @@ from torch_geometric.utils import softmax
 from torch_geometric.nn import EdgePooling
 from torch_geometric.data import Data
 
-# geobind modules
-from geobind.nn.utils import MLP
+# gemenai modules
+from gemenai.nn.utils import MLP
 
 class Decimator(object):
     @staticmethod

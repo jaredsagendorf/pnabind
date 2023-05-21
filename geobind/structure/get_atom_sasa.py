@@ -83,7 +83,7 @@ except BaseException as E:
         def __init__(*args, **kwargs):
             raise Exception("FreeSASA not availble!")
 
-# geobind modules
+# gemenai modules
 from .data import data
 
 def getFreeSASAStructureFromModel(structure, options, classifier=None):

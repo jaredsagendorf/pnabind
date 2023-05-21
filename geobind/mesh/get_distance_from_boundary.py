@@ -1,6 +1,6 @@
 import numpy as np
-from geobind.mesh import getClassSegmentations
-from geobind.mesh import getFaceArea
+from gemenai.mesh import getClassSegmentations
+from gemenai.mesh import getFaceArea
 
 def getDistanceFromBoundary(V, F, Y, E=None, area_faces=None, skip_classes=[0]):
     import gdist

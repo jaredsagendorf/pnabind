@@ -1,7 +1,7 @@
 # third party modules
 import numpy as np
 
-# geobind modules
+# gemenai modules
 from .get_class_segmentations import getClassSegmentations
 from .laplacian_smoothing import laplacianSmoothing
 

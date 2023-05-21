@@ -1,4 +1,4 @@
-# geobind packages
+# gemenai packages
 from .data import data
 
 def getAchtleyFactors(structure, feature_name="achtley_factor", formatstr="{}{}"):

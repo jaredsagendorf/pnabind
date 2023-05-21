@@ -10,10 +10,10 @@ import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR, ExponentialLR
 from torch_geometric.nn import DataParallel
 
-# geobind modules
-from geobind.nn.utils import classWeights
-from geobind.nn import processBatch
-from geobind.nn.metrics import reportMetrics
+# gemenai modules
+from gemenai.nn.utils import classWeights
+from gemenai.nn import processBatch
+from gemenai.nn.metrics import reportMetrics
 
 class Scheduler(object):
     def __init__(self, scheduler):

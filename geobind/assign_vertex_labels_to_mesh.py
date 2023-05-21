@@ -11,10 +11,10 @@ except BaseException as E:
     from .exceptions import ExceptionModule
     cKDTree = ExceptionModule(E)
 
-# geobind modules
-from geobind.structure.data import data
-from geobind.mesh import smoothMeshLabels
-from geobind.utils import segmentsIntersectTriangles
+# gemenai modules
+from gemenai.structure.data import data
+from gemenai.mesh import smoothMeshLabels
+from gemenai.utils import segmentsIntersectTriangles
 from .map_structure_features_to_mesh import mapStructureFeaturesToMesh
 
 class AtomToClassMapper(object):

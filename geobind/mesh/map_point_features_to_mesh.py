@@ -1,8 +1,8 @@
 # third party modules
 import numpy as np
 
-# geobind modules
-from geobind.utils import clipOutliers
+# gemenai modules
+from gemenai.utils import clipOutliers
 from .laplacian_smoothing import laplacianSmoothing
 
 def wfn(dist, cutoff, offset=0, weight_method='inverse_distance', minw=0.5, maxw=1.0):

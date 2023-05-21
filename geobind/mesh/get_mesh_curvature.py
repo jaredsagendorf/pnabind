@@ -1,8 +1,8 @@
 # third party modules
 import numpy as np
 
-# geobind modules
-from geobind.utils import clipOutliers
+# gemenai modules
+from gemenai.utils import clipOutliers
 
 def getMeshCurvature(mesh, gaussian_curvature=True, mean_curvature=True, shape_index=True, remove_outliers=True):
     try:

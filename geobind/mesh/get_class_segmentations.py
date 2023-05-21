@@ -1,8 +1,8 @@
 # third party modules
 import numpy as np
 
-# geobind modules
-from geobind.utils import segmentsIntersectTriangles
+# gemenai modules
+from gemenai.utils import segmentsIntersectTriangles
 
 def getClassSegmentations(edges, labels, 
             faces=None,

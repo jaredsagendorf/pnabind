@@ -5,11 +5,11 @@ import warnings
 import torch
 import numpy as np
 
-# geobind modules
-from geobind.nn import processBatch
-from geobind.nn.metrics import auroc, auprc, balanced_accuracy_score, recall_score, brier_score_loss, specificity
-from geobind.nn.metrics import precision_score, jaccard_score, f1_score, accuracy_score, matthews_corrcoef
-from geobind.nn.metrics import reportMetrics, chooseBinaryThreshold#, meshLabelSmoothness
+# gemenai modules
+from gemenai.nn import processBatch
+from gemenai.nn.metrics import auroc, auprc, balanced_accuracy_score, recall_score, brier_score_loss, specificity
+from gemenai.nn.metrics import precision_score, jaccard_score, f1_score, accuracy_score, matthews_corrcoef
+from gemenai.nn.metrics import reportMetrics, chooseBinaryThreshold#, meshLabelSmoothness
 
 METRICS_FN = {
     'accuracy': accuracy_score,

@@ -9,8 +9,8 @@ import torch
 from torch_geometric.data import Data, InMemoryDataset
 from sklearn.preprocessing import StandardScaler
 
-# geobind modules
-from geobind.nn.utils import balancedClassIndices
+# gemenai modules
+from gemenai.nn.utils import balancedClassIndices
 
 class NodeScaler(object):
     def __init__(self):

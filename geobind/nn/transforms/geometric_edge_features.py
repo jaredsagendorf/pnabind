@@ -2,8 +2,8 @@
 import torch
 from torch_geometric.utils import to_trimesh 
 
-# geobind modules
-from geobind.mesh import getGeometricEdgeFeatures
+# gemenai modules
+from gemenai.mesh import getGeometricEdgeFeatures
 
 class GeometricEdgeFeatures(object):
     r"""docstring

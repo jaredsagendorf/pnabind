@@ -4,8 +4,8 @@ import re
 import subprocess
 import logging 
 
-# geobind modules
-from geobind.utils import Interpolator
+# gemenai modules
+from gemenai.utils import Interpolator
 
 def runAPBS(pqr, command="apbs", prefix="tmp", basedir='.', quiet=True, clean=True, space=0.5, cfac=1.7, fadd=20, gmemceil=400, keep_dx=False):
     """ run APBS and return potential """

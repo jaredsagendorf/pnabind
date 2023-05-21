@@ -23,7 +23,7 @@ from string import ascii_letters
 # third party modules
 import numpy as np
 
-# geobind modules
+# gemenai modules
 from .strip_hydrogens import stripHydrogens
 from .data import data
 from .structure import StructureData
@@ -161,7 +161,7 @@ def cleanProtein(structure,
         regexes=None,
         remove_hydrogens=False,
         quiet=False,
-        method="geobind",
+        method="gemenai",
         **kwargs
     ):
     """ Perform any operations needed to modify the structure or sequence of a protein
@@ -169,7 +169,7 @@ def cleanProtein(structure,
     """
     prefix = structure.name # used for file names
     
-    if method == "geobind":
+    if method == "gemenai":
         # set up needed objects
         if regexes is None:
             regexes = data.regexes

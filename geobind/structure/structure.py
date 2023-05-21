@@ -5,7 +5,7 @@ import logging
 # third party modules
 import numpy as np
 
-# geobind modules
+# gemenai modules
 from .get_atom_kdtree import getAtomKDTree
 from .get_surface_residues import getSurfaceResidues
 

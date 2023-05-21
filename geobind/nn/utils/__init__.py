@@ -32,7 +32,7 @@ __all__ = [
 #from scipy import sparse
 #from sklearn.preprocessing import StandardScaler
 
-## geobind modules
+## gemenai modules
 
 #gmn = GenerateMeshNormals()
 #ppf = PointPairFeatures()
@@ -45,8 +45,8 @@ __all__ = [
         #nOut = config["num_classes"]
     
     #if(config["model"]["name"] == "Net_Conv_EdgePool"):
-        #import geobind
-        #from geobind.nn.models import Net_Conv_EdgePool
+        #import gemenai
+        #from gemenai.nn.models import Net_Conv_EdgePool
         #model = Net_Conv_EdgePool(nIn, nOut, **config["model"]["kwargs"])
     
     #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')

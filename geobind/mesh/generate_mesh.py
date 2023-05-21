@@ -5,11 +5,11 @@ import logging
 # third party modules
 import numpy as np
 
-# geobind modules
-import geobind
+# gemenai modules
+import gemenai
 from .run_nanoshaper import runNanoShaper
 from .run_msms import runMSMS
-from geobind.structure.structure import StructureData 
+from gemenai.structure.structure import StructureData 
 
 def generateMesh(structure, 
         prefix=None, basedir=None, clean=True, hydrogens=True, quiet=True, 

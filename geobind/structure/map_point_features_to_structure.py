@@ -1,6 +1,6 @@
 import numpy as np
 
-from geobind.utils import oneHotEncode
+from gemenai.utils import oneHotEncode
 from .get_atom_kdtree import getAtomKDTree
 
 def mapPointFeaturesToStructure(points, atom_list, features, feature_names, kdtree=None, reduce_method='sum', impute=False, impute_value=0.0):

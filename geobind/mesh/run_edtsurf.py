@@ -2,8 +2,8 @@
 import os
 import subprocess
 
-# geobind modules
-from geobind.utils import moveFile
+# gemenai modules
+from gemenai.utils import moveFile
 from .mesh import Mesh
 
 def runEDTSurf(pdbfile, file_prefix='mesh', basedir='.', clean=True, quiet=True, mesh_kwargs={}, **kwargs):

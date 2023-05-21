@@ -1,5 +1,5 @@
 
-# geobind packages
+# gemenai packages
 from .data import data
 from .get_atom_kdtree import getAtomKDTree
 

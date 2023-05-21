@@ -1,9 +1,9 @@
 # third part modules
 import numpy as np
 
-# geobind modules
-from geobind.mesh import mapPointFeaturesToMesh
-from geobind.structure.data import data as D
+# gemenai modules
+from gemenai.mesh import mapPointFeaturesToMesh
+from gemenai.structure.data import data as D
 
 def mapStructureFeaturesToMesh(mesh, structure, feature_names, residue_ids=None, include_hydrogens=True, impute=True, **kwargs):
     """

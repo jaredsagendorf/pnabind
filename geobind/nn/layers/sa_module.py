@@ -4,7 +4,7 @@ from torch import Tensor
 from torch.nn import ReLU, ELU, Identity, Tanh, Dropout, PReLU, GELU, SiLU
 
 from torch_geometric.nn import radius, fps
-from geobind.nn.utils import MLP
+from gemenai.nn.utils import MLP
 
 ACTIVATION = {
     'relu': ReLU,

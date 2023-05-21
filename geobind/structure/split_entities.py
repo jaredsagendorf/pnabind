@@ -1,4 +1,4 @@
-# geobind modules
+# gemenai modules
 from .data import data as D
 
 

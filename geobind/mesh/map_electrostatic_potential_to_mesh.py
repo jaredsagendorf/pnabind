@@ -1,9 +1,9 @@
 # third party modules
 import numpy as np
 
-# geobind modules
-from geobind.utils import generateUniformSpherePoints
-from geobind.utils import clipOutliers
+# gemenai modules
+from gemenai.utils import generateUniformSpherePoints
+from gemenai.utils import clipOutliers
 from .laplacian_smoothing import laplacianSmoothing
 
 PHI_COEF = [0.1421438807766923, 1.6245703034444483] # linear coefficients to scale phi
