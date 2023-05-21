@@ -14,13 +14,13 @@ The main dependencies for training and running models are pytorch and torch-geom
 # Choose one of the following that is most appropriate for your system
 
 # CUDA 10.2
-conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=10.2 -c pytorch
+conda install pytorch==1.12.1 cudatoolkit=10.2 -c pytorch
 # CUDA 11.3
-conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+conda install pytorch==1.12.1 cudatoolkit=11.3 -c pytorch
 # CUDA 11.6
-conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
-# CPU Only
-conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cpuonly -c pytorch
+conda install pytorch==1.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
+# CPU Only (not reccomended)
+conda install pytorch==1.12.1 cpuonly -c pytorch
 ```
 
 ```
