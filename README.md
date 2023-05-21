@@ -34,12 +34,14 @@ cd gemenai
 pip install -e .
 ```
 
-## Soft Requirements
+### Soft Requirements
 Required for using our mesh and structure feature generation pipeline
 - Biopython (1.76)+
 - trimesh 
-- NanoShaper available on system path
-- MSMS available on system path
-- EDTSurf available on system path (optional)
-- APBS available on system path (optional)
-- PDB2PQR available on system path (optional)
+- NanoShaper OR MSMS OR EDTSurf available on system path
+#### For electrostatic feature calculations
+- APBS OR TABI-PB available on system path
+- PDB2PQR available on system path
+#### For MSA feature calculations
+- PSI-BLAST available on system path
+- HHBlits available on system path
