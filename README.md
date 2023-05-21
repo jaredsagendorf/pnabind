@@ -36,12 +36,12 @@ pip install -e .
 
 ### Soft Requirements
 Required for using our mesh and structure feature generation pipeline
-- Biopython (1.76)+
-- trimesh 
-- NanoShaper OR MSMS OR EDTSurf available on system path
+- [Biopython](https://github.com/biopython/biopython) (1.76)+
+- [trimesh](https://github.com/mikedh/trimesh) 
+- NanoShaper or MSMS or EDTSurf available on system path (provided in `share`)
 #### For electrostatic feature calculations
-- APBS OR TABI-PB available on system path
-- PDB2PQR available on system path
+- [APBS](https://apbs.readthedocs.io/en/latest/getting/index.html) or [TABI-PB](https://github.com/Treecodes/TABI-PB) available on system path
+- [PDB2PQR](https://pdb2pqr.readthedocs.io/en/latest/getting.html) available on system path
 #### For MSA feature calculations
-- PSI-BLAST available on system path
-- HHBlits available on system path
+- [PSI-BLAST](https://blast.ncbi.nlm.nih.gov/doc/blast-help/downloadblastdata.html) available on system path
+- [HHBlits](https://github.com/soedinglab/hh-suite) available on system path
