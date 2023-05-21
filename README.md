@@ -14,19 +14,20 @@ The main dependencies for training and running models are pytorch and torch-geom
 # Choose one of the following that is most appropriate for your system
 
 # CUDA 10.2
-conda install pytorch==1.11.0 torchvision==0.12.0 cudatoolkit=10.2 -c pytorch
-
+conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=10.2 -c pytorch
 # CUDA 11.3
-conda install pytorch==1.11.0 torchvision==0.12.0 cudatoolkit=11.3 -c pytorch
-
+conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+# CUDA 11.6
+conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
 # CPU Only
-conda install pytorch==1.11.0 torchvision==0.12.0 cpuonly -c pytorch
+conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cpuonly -c pytorch
 ```
 
 ```
 conda install pyg -c pyg
 ```
 Finally, to install the code needed to run our scripts, clone this repository to a local directory and install:
+
 ```
 gh repo clone jaredsagendorf/gemenai
 cd gemenai
@@ -34,7 +35,7 @@ pip install -e .
 ```
 
 ## Soft Requirements
-Required for using our mesh and mesh feature generation pipeline
+Required for using our mesh and structure feature generation pipeline
 - Biopython (1.76)+
 - trimesh 
 - NanoShaper available on system path
