@@ -4,7 +4,6 @@ from torch_geometric.typing import OptTensor, PairOptTensor, PairTensor, Adj
 import torch
 from torch import Tensor
 from torch.nn import Parameter
-from torch_sparse import SparseTensor, set_diag
 from torch_geometric.utils import remove_self_loops, add_self_loops
 from torch_geometric.nn.conv import PPFConv
 
@@ -62,6 +61,7 @@ class PPHConv(PPFConv):
                  normalize: bool = False,
                  eps: float = 1e-5,
                  aggr: str = 'add', **kwargs):
+        from torch_sparse import SparseTensor, set_diag
         kwargs.setdefault('node_dim', 0)
         super(PPHConv, self).__init__(local_nn, global_nn, add_self_loops=add_self_loops, **kwargs)
         

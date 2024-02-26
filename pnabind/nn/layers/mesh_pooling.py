@@ -5,9 +5,6 @@ import heapq as hq
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch_scatter import scatter_add
-from torch_sparse import coalesce
-from torch_geometric.utils import softmax
 from torch_geometric.nn import EdgePooling
 from torch_geometric.data import Data
 
@@ -304,6 +301,9 @@ class MeshPooling(EdgePooling):
             act=None,
             add_to_edge_score=0.5
         ):
+        from torch_scatter import scatter_add
+        from torch_sparse import coalesce
+        from torch_geometric.utils import softmax
         super().__init__(in_channels,
             add_to_edge_score=add_to_edge_score,
             edge_score_method=edge_score_method,

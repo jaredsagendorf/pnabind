@@ -3,7 +3,6 @@ from typing import Callable, Optional, Union
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from torch_sparse import SparseTensor, set_diag
 
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.typing import Adj, OptTensor, PairOptTensor, PairTensor
@@ -67,6 +66,7 @@ class EdgeAttentionConv(MessagePassing):
             average_heads: bool = False,
             **kwargs
         ):
+        from torch_sparse import SparseTensor, set_diag
         kwargs.setdefault('aggr', 'add')
         super().__init__(**kwargs)
         
