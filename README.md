@@ -1,12 +1,12 @@
-# GEMENAI
+# PNAbind
 A python package and collection of scripts for computing protein surface meshes, chemical, electrostatic, geometric and MSA features, and  building/training graph neural network models of protein-nucleic acid binding.
 ![overview](docs/overview.png)
 
 ## Installation
 To run our code, it is recommended to create a new anaconda enviroment and install this package and required dependencies to the fresh environment.
 ```
-conda create -n gemenai python=3.9
-conda activate gemenai
+conda create -n pnabind python=3.9
+conda activate pndabind
 ```
 The main dependencies for training and running models are pytorch and torch-geometric. You may try installing the latest versions, but the following should work:
 
@@ -29,8 +29,8 @@ conda install pyg -c pyg
 Finally, to install the code needed to run our scripts, clone this repository to a local directory and install:
 
 ```
-gh repo clone jaredsagendorf/gemenai
-cd gemenai
+gh repo clone jaredsagendorf/pnabind
+cd pnabind
 pip install -e .
 ```
 
