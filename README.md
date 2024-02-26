@@ -19,7 +19,7 @@ conda install pytorch==1.12.1 cudatoolkit=10.2 -c pytorch
 conda install pytorch==1.12.1 cudatoolkit=11.3 -c pytorch
 # CUDA 11.6
 conda install pytorch==1.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
-# CPU Only (not reccomended)
+# CPU Only (not recommended)
 conda install pytorch==1.12.1 cpuonly -c pytorch
 ```
 
