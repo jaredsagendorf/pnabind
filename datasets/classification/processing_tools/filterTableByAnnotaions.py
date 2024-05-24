@@ -2,7 +2,7 @@ import argparse
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("uniprot_tsv", help="tab-separate value table of uniprot accessions")
 arg_parser.add_argument("output_file", help="CSV file to write to")
-arg_parser.add_argument("alphafold_accessions", help="list of alphafold accession ids")
+arg_parser.add_argument("-a", "--alphafold_accessions", default=None, help="list of available alphafold accession ids")
 arg_parser.add_argument("-g", "--go_terms", help="file of excluded GO terms")
 arg_parser.add_argument("-k", "--kw_terms", help="file of excluded uniprot kws")
 arg_parser.add_argument("-G", "--go_terms_list", nargs="+", help="list of excluded GO terms")
@@ -12,8 +12,9 @@ arg_parser.add_argument("--max_length", default=1000, type=int, help="maximum se
 arg_parser.add_argument("--min_annotation_score", default=1, type=int, help="minimum annotation score")
 ARGS = arg_parser.parse_args()
 
-# load alphafold accessions
-ALPHAFOLD_ACCESSIONS = set([accession.strip() for accession in open(ARGS.alphafold_accessions)])
+# load available alphafold accessions if provided
+if ARGS.alphafold_acccessions is not None:
+    ALPHAFOLD_ACCESSIONS = set([accession.strip() for accession in open(ARGS.alphafold_accessions)])
 
 # load excluded terms
 GO_TERMS = set()
@@ -46,7 +47,7 @@ for line in FH:
     
     # check if alphafold structure exists
     accession = fields[0]
-    if accession not in ALPHAFOLD_ACCESSIONS:
+    if ARGS.alphafold_acccessions is not None and accession not in ALPHAFOLD_ACCESSIONS:
         continue
     
     # check for presense of forbidden keywords
@@ -58,7 +59,7 @@ for line in FH:
     if (len(go_int) > 0) or (len(kw_int) > 0):
         continue
     
-    # keep accession
+    # write output
     print(accession)
     if ARGS.label:
         OUT.write("%s,%d,%d,%s\n" % (accession, score, length, ARGS.label))

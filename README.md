@@ -1,6 +1,15 @@
 # PNAbind
-A python package and collection of scripts for computing protein surface meshes, chemical, electrostatic, geometric and MSA features, and  building/training graph neural network models of protein-nucleic acid binding.
+PNAbind is a python package and collection of scripts built for computing protein surface meshes, assigning chemical, electrostatic, geometric and MSA features to those meshes, and building/training graph neural network models of protein-nucleic acid binding.
+
+## Overview
 ![overview](docs/overview.png)
+
+The overall workflow of our method is shown in the picture above. The fundamental data structure used for representation of a protein is a closed molecular surface mesh. Supervised training data can be generated from protein-nucleic acid complexes for residue-level prediction, or from binding function annotation for protein-level prediction. 
+
+## Example Features
+![features](docs/features.png)
+
+We provide a large collection of functions for generating electrostatic, chemical, geometrical, and evolutionary features, and functions for mapping arbitrary features defined for atoms, residues, or overs a 3D grid to a given surface mesh.
 
 ## Installation
 To run our code, it is recommended to create a new anaconda enviroment and install this package and required dependencies to the fresh environment.

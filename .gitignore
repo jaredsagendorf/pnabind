@@ -4,6 +4,14 @@ models
 .rsync_exclude
 *.bak
 *.gz
+*.tar
+*.pdb
+*.npz
+*.cif
+!examples/*.cif
+!examples/*.npz
+!examples/*.tar
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
