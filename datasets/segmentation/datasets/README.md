@@ -17,7 +17,7 @@ References:
 4. Zhou, Jiyun, et al. BMC bioinformatics 18.1 (2017): 1-16.
 
 ## Steps for pre-processing structural data with provided tools
-The following is a more or less complete guide for pre-processing the native bound protein datasets we used.
+The following is a more or less complete guide for pre-processing the native bound protein datasets we used. Tools can be found in the directery `processing_tools`
 
 
 1. First obtain list of PDB identifiers w/ chain ids, e.g.:	
