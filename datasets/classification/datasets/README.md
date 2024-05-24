@@ -4,14 +4,14 @@ To download pre-processed datasets, visit https://doi.org/10.5281/zenodo.1128847
 ## Steps for creating datasets
 The following is a more or less complete guide for generating the AlphaFold datasets we used. Some steps may require a lot of data processing and are best done in parallel.
 
-1. The files 'swissprot_dna_binding.tab', 'swissprot_rna_binding.tab' and 'swissprot_other.tab' were downloaded from UniProt with the following criteria:
+1. The files `swissprot_dna_binding.tab`, `swissprot_rna_binding.tab` and `swissprot_other.tab` were downloaded from UniProt with the following criteria:
 	swissprot_dna_binding.tab: reviewed = yes AND key words = 'DNA-binding'
 	swissprot_dna_binding.tab: reviewed = yes AND key words = 'RNA-binding'
 	swissprot_other.tab: reviewed = yes AND key words = NOT 'DNA-binding' AND kew words = NOT 'RNA-binding'
 
 	These can be updated if creating a new dataset.
 
-2. Additional filters were applied using the script 'filterTableByAnnotations.py':
+2. Additional filters were applied using the script `filterTableByAnnotations.py`:
 	```
 	SCRIPT_DIR=../processing_tools
 	python $SCRIPT_DIR/filterTableByAnnotaions.py swissprot_rna_binding.tab clustering/rna_binding_info -a available_in_AFDB.txt -K 'DNA-binding' --max_length 800 --min_annotation_score 2 --label 'rna_binding' > clustering/rna_binding_1.txt	
@@ -28,7 +28,7 @@ The following is a more or less complete guide for generating the AlphaFold data
 	python $SCRIPT_DIR//parseCDHITClusters.py rna_binding.clstr rna_binding_info.csv -o rna_binding_70
 	python $SCRIPT_DIR//parseCDHITClusters.py non_binding.clstr non_binding_info.csv -o non_binding_70
 	```
-4. Alphafold structures were then downloaded for the remaining sequences and assessed for quality using the script 'removeLowConfidenceResidues.py':
+4. Alphafold structures were then downloaded for the remaining sequences and assessed for quality using the script `removeLowConfidenceResidues.py`:
 	```	
 	cat dna_binding_70.txt rna_binding_70.txt non_binding_70.txt > sequences_70.txt
 	mkdir raw_structures
@@ -47,3 +47,4 @@ The following is a more or less complete guide for generating the AlphaFold data
 	```
 6. The remaining sequences were clustered again using PSI-BLAST at 35% sequence identity threshold to get the final list of sequences
 ## Steps for generating mesh data
+TBD
