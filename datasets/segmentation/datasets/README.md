@@ -11,10 +11,9 @@ The following benchmark datasets are used in our manuscript for training and eva
 | RBP09<sup>3</sup> | RPB61<sup>3</sup>  |
 
 References:
-1. Xia, Ying, et al. Nucleic acids research 49.9 (2021): e51-e51.
-2. Bhardwaj, Nitin, et al. 2005 IEEE Engineering in Medicine and Biology 27th Annual Conference. IEEE, 2006.
-3. Ma, Xin, et al. IEEE/ACM transactions on computational biology and bioinformatics 9.06 (2012): 1766-1775.
-4. Zhou, Jiyun, et al. BMC bioinformatics 18.1 (2017): 1-16.
+1. Xia, Ying, et al. Nucleic acids research 49.9 (2021): e51.
+2. Yuan Q, Chen S, Rao J, Zheng S, Zhao H, Yang Y. Brief Bioinform. 2022 Mar 10;23(2):bbab564.
+3. Pengpai Li, Zhi-Ping Liu, Bioinformatics, Volume 38, Issue 8, March 2022, Pages 2162–2168.
 
 ## Steps for pre-processing structural data with provided tools
 The following is a more or less complete guide for pre-processing the native bound protein datasets we used. Tools can be found in the directory `processing_tools`
