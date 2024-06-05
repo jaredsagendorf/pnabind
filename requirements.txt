@@ -6,3 +6,6 @@ freesasa==2.1.0
 tensorboard==2.4.1
 networkx==2.5
 gdist
+libigl
+matplotlib
+pyglet<2
