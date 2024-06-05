@@ -8,9 +8,9 @@ models
 *.pdb
 *.npz
 *.cif
-!examples/*.cif
-!examples/*.npz
-!examples/*.tar
+*.log
+*.off
+!examples/generate_mesh_data/structures/*.pdb
 
 
 # Byte-compiled / optimized / DLL files

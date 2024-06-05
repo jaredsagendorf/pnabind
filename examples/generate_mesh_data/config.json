@@ -1,0 +1,35 @@
+{
+    "PDB_FILES_PATH": "./structure_data",
+    "MESH_FILES_PATH": "./mesh_files",
+    "FEATURE_DATA_PATH": "./mesh_data",
+    "ELECTROSTATICS_PATH": null,
+    "STRUCTURES_OUTPUT_PATH": "./structure_data_clean",
+    "HYDROGENS": true,
+    "DSSP_MAP": {
+        "H": "H",
+        "G": "H",
+        "I": "H",
+        "E": "S",
+        "B": "L",
+        "T": "L",
+        "S": "L",
+        "-": "L"
+    },
+    "ATOM_DISTANCE_CUTOFF": 5.0,
+    "MASK_DISTANCE_CUTOFF": 3.0,
+    "AREA_MEASURE": "sesa",
+    "GRID_SCALE": 0.8,
+    "SMOOTH_LABELS": true,
+    "SMOOTHING_THRESHOLD": 150.0,
+    "MASK_LABELS": false,
+    "MOIETY_LABEL_SET_NAME": "BINARY_STANDARD_RNA",
+    "ELECTROSTATICS_KW": {
+    	"space": 0.7,
+    	"cfac": 1.6,
+    	"fadd": 18
+    },
+    "BLAST_DB_NAME": null,
+    "BLAST_DB_DIR": null,
+    "HHBLITS_DB_NAME": null,
+    "HHBLITS_DB_DIR": null
+}
