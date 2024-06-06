@@ -12,7 +12,7 @@ The overall workflow of our method is shown in the picture above. The fundamenta
 We provide a large collection of functions for generating electrostatic, chemical, geometrical, and evolutionary features, and functions for mapping arbitrary features defined for atoms, residues, or over a 3D grid to a given surface mesh.
 
 ## Installation
-To run our code, it is recommended to create a new anaconda enviroment and install this package and required dependencies to the fresh environment.
+To run our code, it is recommended to create a new [anaconda](https://docs.anaconda.com/free/miniconda/) enviroment and install this package and required dependencies to the fresh environment.
 ```
 conda create -n pnabind python=3.9
 conda activate pndabind
