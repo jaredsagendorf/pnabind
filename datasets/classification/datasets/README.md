@@ -47,4 +47,4 @@ The following is a more or less complete guide for generating the AlphaFold data
 	```
 6. The remaining sequences were clustered again using PSI-BLAST at 35% sequence identity threshold to get the final list of sequences
 ## Steps for generating mesh data
-TBD
+See "generate_mesh_data" in examples.
