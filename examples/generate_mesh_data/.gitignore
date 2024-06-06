@@ -1,0 +1,5 @@
+structure_data_clean
+mesh_data
+mesh_files
+pb_files
+*.npz

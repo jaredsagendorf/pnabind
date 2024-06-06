@@ -28,6 +28,7 @@ The file `config.json` contains various processing and output options. The follo
 To process files for prediction, invoke the script `generate_protein_meshdata.py` with the `-Y` option, which means do not add any labels. To skip MSA and electrostatic features (which are slow to compute), add the options `-ME`. The following invokation will process the provided structure files in the directory `structure_data` with MSA and Electrostatic features included.
 
 ```
+mkdir mesh_data mesh_files pb_files structure_data_clean
 python ../../scripts/generate_protein_meshdata.py structure_files.txt -c config.json -rsAPZY \
 --full_chain_sequences chain_sequence_map.json --clean_structures
 ```

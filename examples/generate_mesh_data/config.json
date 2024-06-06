@@ -2,7 +2,7 @@
     "PDB_FILES_PATH": "./structure_data",
     "MESH_FILES_PATH": "./mesh_files",
     "FEATURE_DATA_PATH": "./mesh_data",
-    "ELECTROSTATICS_PATH": null,
+    "ELECTROSTATICS_PATH": "./pb_files",
     "STRUCTURES_OUTPUT_PATH": "./structure_data_clean",
     "HYDROGENS": true,
     "ATOM_DISTANCE_CUTOFF": 5.0,
