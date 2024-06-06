@@ -39,7 +39,7 @@ The file `chain_sequence_map.json` is used to pass the full sequence of each cha
 
 
 ## Visualizing mesh data
-We can visualize the processed mesh data using the provided script `pnabind/scripts/generate_protein_meshdata.py`. For example, after successfully processing the provided structure data,
+We can visualize the processed mesh data using the provided script `pnabind/scripts/visualize_meshdata.py`. For example, after successfully processing the provided structure data,
 
 ```
 (pnabind) [jared@fedora generate_mesh_data]$ ../../scripts/visualize_meshdata.py mesh_data/1h4s_A_protein_data.npz 
