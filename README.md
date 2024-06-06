@@ -36,7 +36,13 @@ conda install pytorch==1.12.1 cpuonly -c pytorch
 conda install pyg -c pyg
 conda install pytorch-scatter -c pyg
 ```
-Finally, to install the code needed to run our scripts, clone this repository to a local directory and install:
+
+For easy install of additional dependencies, run
+```
+pip install -r requirements.txt
+```
+
+Or you can install these dependencies individually as needed (when pnabind throws an exception). Finally, to install the code needed to run our scripts, clone this repository to a local directory and install:
 
 ```
 gh repo clone jaredsagendorf/pnabind
@@ -45,7 +51,7 @@ pip install -e .
 ```
 
 ### Soft Requirements
-Required for using our mesh and structure feature generation pipeline
+Required for using our mesh and structure feature generation pipeline. The major dependencies are
 - [Biopython](https://github.com/biopython/biopython) (1.76)+
 - [trimesh](https://github.com/mikedh/trimesh) 
 - NanoShaper or MSMS or EDTSurf available on system path (provided in `share`)
