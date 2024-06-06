@@ -37,6 +37,38 @@ Computing MSA features will require having BLAST/HHBlits configured with the cor
 
 The file `chain_sequence_map.json` is used to pass the full sequence of each chain, and is keyed by the name of the protein structure file, followed by the chain identifier. Otherwise, the sequence of each chain is estimated from the residues present in the structure. If residues are missing, the BLAST/HHBlits alignments will be less accurate. It is reccomended to include this file.
 
+
+## Visualizing mesh data
+We can visualize the processed mesh data using the provided script `pnabind/scripts/generate_protein_meshdata.py`. For example, after successfully processing the provided structure data,
+
+```
+(pnabind) [jared@fedora generate_mesh_data]$ ../../scripts/visualize_meshdata.py mesh_data/1h4s_A_protein_data.npz 
+Enter one of the following:
+    l to list features
+    m to visualize only the mesh
+    c to compare two sets of labels
+    q to exit
+    t a threshold to visualize predictions with: Y = (P1 >= t)
+    a list of data fields, separated by space (e.g. "X1 X2 Y")
+:l
+X_0 : mean_curvature
+X_1 : hks1
+X_2 : hks2
+X_3 : hks3
+X_4 : hks4
+X_5 : sap
+X_6 : cv_fine
+X_7 : cv_medium
+X_8 : cv_coarse
+...
+Y: data field
+```
+
+By calling the script and typing "l", we get a list of features. We can select one or more to visualize. In this case, try `X_5`. 
+
+![mesh_feature](1h4s_A.png)
+
+
 ## Processing for Training/Testing
 Processing for training/testing means including binding-site or binding-class labels. Some additional files are provided which can be used for fine-tuning how labels are created.
 
