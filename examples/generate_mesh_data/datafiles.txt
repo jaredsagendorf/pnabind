@@ -1,0 +1,10 @@
+1f7u_A_protein_data.npz
+1f8v_A_protein_data.npz
+1feu_D_protein_data.npz
+1ffy_A_protein_data.npz
+1fka_E_protein_data.npz
+1h2c_A_protein_data.npz
+1h3e_A_protein_data.npz
+1h4s_A_protein_data.npz
+1hnw_P_protein_data.npz
+1hnw_T_protein_data.npz

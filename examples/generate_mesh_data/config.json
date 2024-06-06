@@ -5,16 +5,6 @@
     "ELECTROSTATICS_PATH": null,
     "STRUCTURES_OUTPUT_PATH": "./structure_data_clean",
     "HYDROGENS": true,
-    "DSSP_MAP": {
-        "H": "H",
-        "G": "H",
-        "I": "H",
-        "E": "S",
-        "B": "L",
-        "T": "L",
-        "S": "L",
-        "-": "L"
-    },
     "ATOM_DISTANCE_CUTOFF": 5.0,
     "MASK_DISTANCE_CUTOFF": 3.0,
     "AREA_MEASURE": "sesa",
