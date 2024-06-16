@@ -12,7 +12,7 @@ The overall workflow of our method is shown in the picture above. The fundamenta
 We provide a large collection of functions for generating electrostatic, chemical, geometrical, and evolutionary features, and functions for mapping arbitrary features defined for atoms, residues, or over a 3D grid to a given surface mesh.
 
 ## Installation
-To run our code, it is recommended to create a new anaconda enviroment and install this package and required dependencies to the fresh environment.
+To run our code, it is recommended to create a new [anaconda](https://docs.anaconda.com/free/miniconda/) enviroment and install this package and required dependencies to the fresh environment.
 ```
 conda create -n pnabind python=3.9
 conda activate pndabind
@@ -35,7 +35,13 @@ conda install pytorch==1.12.1 cpuonly -c pytorch
 ```
 conda install pyg==2.1.0 -c pyg
 ```
-Finally, to install the code needed to run our scripts, clone this repository to a local directory and install:
+
+For easy install of additional dependencies, run
+```
+pip install -r requirements.txt
+```
+
+Or you can install these dependencies individually as needed (when pnabind throws an exception). Finally, to install the code needed to run our scripts, clone this repository to a local directory and install:
 
 ```
 gh repo clone jaredsagendorf/pnabind
@@ -44,7 +50,7 @@ pip install -e .
 ```
 
 ### Soft Requirements
-Required for using our mesh and structure feature generation pipeline
+Required for using our mesh and structure feature generation pipeline. The major dependencies are
 - [Biopython](https://github.com/biopython/biopython) (1.76)+
 - [trimesh](https://github.com/mikedh/trimesh) 
 - NanoShaper or MSMS or EDTSurf available on system path (provided in `share`)

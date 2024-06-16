@@ -58,4 +58,4 @@ The following is a more or less complete guide for pre-processing the native bou
 	python getBindingResidueIds.py <structure_dir> <label FASTA file> -m chain_mappings.json
  	```
 ## Steps for generating mesh data
-TBD
+See "generate_mesh_data" in examples.

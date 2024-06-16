@@ -34,7 +34,7 @@ The following is a more or less complete guide for generating the AlphaFold data
 	mkdir raw_structures
 	mkdir structures
 	cd raw_structures	
-	python $SCRIPT_DIR/downloadFromAFDB.py sequences_70.txt
+	python $SCRIPT_DIR/downloadFromAFDB.py ../sequences_70.txt
 	ls *.pdb > ../raw_structure_list.txt # this can be broken up for batch processing
 	cd ..
 	python $SCRIPT_DIR/removeLowConfidenceResidues.py raw_structure_list.txt raw_structures structures
@@ -47,4 +47,4 @@ The following is a more or less complete guide for generating the AlphaFold data
 	```
 6. The remaining sequences were clustered again using PSI-BLAST at 35% sequence identity threshold to get the final list of sequences
 ## Steps for generating mesh data
-TBD
+See "generate_mesh_data" in examples.
