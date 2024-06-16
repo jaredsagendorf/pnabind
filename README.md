@@ -33,8 +33,7 @@ conda install pytorch==1.12.1 cpuonly -c pytorch
 ```
 
 ```
-conda install pyg -c pyg
-conda install pytorch-scatter -c pyg
+conda install pyg==2.1.0 -c pyg
 ```
 Finally, to install the code needed to run our scripts, clone this repository to a local directory and install:
 

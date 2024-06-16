@@ -1,0 +1,10 @@
+C5CC51_protein_data.npz
+O54962_protein_data.npz
+P0A7M2_protein_data.npz
+P29538_protein_data.npz
+P32104_protein_data.npz
+P54988_protein_data.npz
+Q5UX22_protein_data.npz
+Q81RU6_protein_data.npz
+Q9FKQ6_protein_data.npz
+Q9UTQ0_protein_data.npz
