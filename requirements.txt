@@ -1,11 +1,10 @@
 biopython==1.78
-trimesh
+trimesh<4
 bitarray==1.6.3
 GridDataFormats==0.5.0
 freesasa==2.1.0
-tensorboard==2.4.1
 networkx==2.5
-gdist
 libigl
-matplotlib
+matplotlib<3.6
 pyglet<2
+sklearn==1.21.0
