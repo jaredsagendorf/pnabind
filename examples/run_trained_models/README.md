@@ -10,7 +10,7 @@ MODEL_DIR=../../../models/classification/trained_models/dna_vs_rna
 The file `config.json` stores all the information needed to load the pre-trained models. If you have trained your own models, these configuration options should be the same as the model you trained. We simply pass this configuraiton file along with a list of model state dictionaries (`fold1-5.tar`) and pickled scaler objects to center/scale the input mesh data (`scaler1-5.pkl`). 
 
 ```
-python ~/cmb/transfer/run_classifier_ensemble.py datafiles.txt datafiles -c config.json --checkpoint_files $MODEL_DIR/*.tar --scalers $MODEL_DIR/*.pkl
+python ../../../scripts/run_classifier_ensemble.py datafiles.txt datafiles -c config.json --checkpoint_files $MODEL_DIR/*.tar --scalers $MODEL_DIR/*.pkl
 ```
 
 The script will generate output files with predictions for each input mesh data file. For example, using the provided datafiles, the file `predictions.csv` will be contain:
