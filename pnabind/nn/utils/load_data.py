@@ -154,7 +154,7 @@ def _processData(data_files, nc,
         else:
             X = data_arrays['X']
         
-        if labels_key:
+        if labels_key and labels_key in data_arrays:
             Y = data_arrays[labels_key]
             if use_masks:
                 # construct training mask
@@ -183,7 +183,7 @@ def _processData(data_files, nc,
             use_masks = False
         
         # construct data object
-        if labels_key:
+        if labels_key and labels_key in data_arrays:
             y = torch.tensor(Y, dtype=torch.int64)
         else:
             y = None
