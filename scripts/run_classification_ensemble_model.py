@@ -130,8 +130,8 @@ with torch.no_grad():
         if 'y' in batch:
             y = batch['y'].cpu().numpy()
         else:
-            y = -1
-        Ys.append([y])
+            y = [-1]
+        Ys.append(y)
         Ps.append(output)
         
         # combine ensemble predictions
