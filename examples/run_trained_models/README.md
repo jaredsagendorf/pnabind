@@ -1,5 +1,7 @@
 ## Introduction
-This tutorial shows how to use the script `run_classifier_ensemble.py` to generate predictions. The directory `mesh_data` contains 10 pre-processed datafiles for the purpose of demonstration. Replace this directory with your own datafiles as desired.
+This tutorial shows how to use the script `run_classifier_ensemble.py` to generate predictions on a test set with known ground-truth labels. The directory `mesh_data` contains 10 pre-processed datafiles for the purpose of demonstration. Replace this directory with your own datafiles as desired. 
+
+**Note:** If you are using this script to perform inference on unlabeled data, make sure you run it with the flag `--prediction`. This will output `-1` under the `Y_gt` column. 
 
 We provide pre-trained models for three classification tasks (dna-binding vs non-binding, rna-binding vs non-binding and dna-binding vs rna-binding). Data for these models are found in `pnabind/models/classification`. We will set one of these directories in an environment variable:
 
