@@ -17,6 +17,8 @@ arg_parser.add_argument("-c", "--config", dest="config_file", required=True,
                 help="file storing configuration options")
 arg_parser.add_argument("--threshold", default=0.5, type=float,
                 help="probability threshold")
+arg_parser.add_argument("--prediction", action="store_true",
+                help="this will ignore any ground-truth labels and only output predicted labels.")
 ARGS = arg_parser.parse_args()
 
 import json
@@ -80,7 +82,11 @@ datafiles = [_.strip() for _ in open(ARGS.data_file).readlines()]
 datafiles = list(filter(lambda x: x[0] != '#', datafiles)) # remove commented lines
 
 GMN = GenerateMeshNormals()
-dataset, transforms, info = loadDataset(datafiles, 2, C.get("LABELS_KEY", None), ARGS.data_dir,
+if ARGS.prediction
+    y_key = None
+else:
+    y_key = C.get("LABELS_KEY", None)
+dataset, transforms, info = loadDataset(datafiles, 2, y_key, ARGS.data_dir,
         cache_dataset=False,
         scale=False,
         pre_transform=GMN,
@@ -125,7 +131,7 @@ with torch.no_grad():
             y = batch['y'].cpu().numpy()
         else:
             y = -1
-        Ys.append(y)
+        Ys.append([y])
         Ps.append(output)
         
         # combine ensemble predictions
