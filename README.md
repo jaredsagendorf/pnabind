@@ -11,7 +11,36 @@ The overall workflow of our method is shown in the picture above. The fundamenta
 
 We provide a large collection of functions for generating electrostatic, chemical, geometrical, and evolutionary features, and functions for mapping arbitrary features defined for atoms, residues, or over a 3D grid to a given surface mesh.
 
-## Installation
+## Docker Container
+For your convenience, we have provided a Docker container to run PNAbind. Docker must be installed on a Linux workstation. In addition, if you have a GPU available, we recommend installing the [NVIDIA container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Please note the Docker container does not run alignment; users interested in this should refer to the full installation instructions below.
+
+To get started, run:
+`docker pull aricohen/pnabind:latest`
+
+Then, download the run_container.sh file located in this directory. Make sure to make it executable: `chmod +x ./run_container.sh`
+
+Finally, run PNAbind, ensuring your input file is valid and only contains protein:
+
+```
+# To run PNAbind on CPU only mode, classifying dna_vs_rna:
+./run_container.sh /path/to/your/protein.pdb dna_vs_rna /path/to/output/directory --cpu
+
+# To run PNAbind with GPU acceleration (requires CUDA and container toolkit), classifying dna_vs_non:
+./run_container.sh /path/to/your/protein.pdb dna_vs_non /path/to/output/directory
+
+# Parameters
+model types: dna_vs_rna, dna_vs_non, rna_vs_non
+--cpu: no GPU (slower, but required if you do not have CUDA configured for both Linux and Docker)
+-i: run the container in interactive mode (advanced). You can use Docker commands to copy files into the container and run scripts manually
+
+# Output:
+The following output will be saved to the folder you specify:
+-predictions.csv (Y_pr will give the prediction, and Y_gt is always -1 since the PNAbind Docker container does not currently support providing ground truth values)
+-predictions.npz
+-name_pnbind_protein_data.npz (mesh and other data that can be visualized with visualize_meshdata.py, available on our GitHub)
+```
+
+## Full Installation
 To run our code, it is recommended to create a new [anaconda](https://docs.anaconda.com/free/miniconda/) enviroment and install this package and required dependencies to the fresh environment.
 ```
 conda create -n pnabind python=3.9
