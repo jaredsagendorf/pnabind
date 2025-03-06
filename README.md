@@ -42,7 +42,7 @@ model types: dna_vs_rna, dna_vs_non, rna_vs_non
 The following output will be saved to the folder you specify:
 -predictions.csv (Y_pr will give the prediction, and Y_gt is always -1 since the PNAbind Docker container does not currently support providing ground truth values)
 -predictions.npz
--name_pnbind_protein_data.npz (mesh and other data that can be visualized with visualize_meshdata.py, available on our GitHub)
+-name_pnabind_protein_data.npz (mesh and other data that can be visualized with visualize_meshdata.py, available on our GitHub)
 ```
 
 ## Full Installation
