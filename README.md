@@ -15,9 +15,14 @@ We provide a large collection of functions for generating electrostatic, chemica
 For your convenience, we have provided a Docker container to run PNAbind. Docker must be installed on a Linux workstation. In addition, if you have a GPU available, we recommend installing the [NVIDIA container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Please note the Docker container does not run alignment; users interested in this should refer to the full installation instructions below.
 
 To get started, run:
-`docker pull aricohen/pnabind:latest`
+```
+docker pull aricohen/pnabind:latest
+```
 
-Then, download the run_container.sh file located in this directory. Make sure to make it executable: `chmod +x ./run_container.sh`
+Then, download the run_container.sh file located in this directory. Make sure to make it executable:
+```
+chmod +x ./run_container.sh
+```
 
 Finally, run PNAbind, ensuring your input file is valid and only contains protein:
 
