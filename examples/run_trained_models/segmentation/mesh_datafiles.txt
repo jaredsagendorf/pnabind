@@ -1,0 +1,10 @@
+4zm2_B_protein_data.npz
+5hnk_A_protein_data.npz
+5k5q_B_protein_data.npz
+5l6l_D_protein_data.npz
+5nj8_A_protein_data.npz
+5tgx_A_protein_data.npz
+5vhe_A_protein_data.npz
+5vhv_A_protein_data.npz
+5yx2_A_protein_data.npz
+6gdr_A_protein_data.npz
